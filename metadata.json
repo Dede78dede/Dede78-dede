@@ -1,0 +1,5 @@
+{
+  "name": "LLM Specialized Platform",
+  "description": "Orchestrated Platform for Specialized LLM Development with SmarterRouter, LLM-CL, Obsidian integration, and Workflow Chaining.",
+  "requestFramePermissions": []
+}
