@@ -1,4 +1,5 @@
 import { pipeline, FeatureExtractionPipeline } from '@huggingface/transformers';
+import { PolicyEngine, RoutingPolicy } from './PolicyEngine';
 
 /**
  * SmarterRouter is responsible for intelligently routing prompts to either
@@ -133,7 +134,23 @@ export class SmarterRouter {
   /**
    * Invia il prompt al MasterOrchestrator (MaAS) per l'analisi e l'azione.
    */
-  static async orchestrate(prompt: string, systemPrompt?: string): Promise<{ action: string, message: string, jobId?: string }> {
+  static async orchestrate(prompt: string, systemPrompt?: string, policy?: RoutingPolicy): Promise<{ action: string, message: string, jobId?: string, reasoningDomain?: string }> {
+    // 1. Evaluate Policy before sending data to cloud
+    if (policy) {
+      try {
+        const selectedModel = PolicyEngine.evaluate(prompt, policy);
+        if (selectedModel.isLocal) {
+           console.log("[PolicyEngine] Forcing LOCAL_DELEGATION due to policy constraints.");
+           return {
+             action: "LOCAL_DELEGATION",
+             message: "⚡ *Policy Engine*: Instradamento forzato al modello locale (Privacy/Costo)."
+           };
+        }
+      } catch (e: any) {
+        console.warn("[PolicyEngine] Evaluation failed or constraints too strict:", e.message);
+      }
+    }
+
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (typeof process !== 'undefined' && process.env ? process.env.GEMINI_API_KEY : undefined);
     if (!apiKey) {
       throw new Error("API key non configurata per il Master Orchestrator.");
@@ -146,7 +163,8 @@ export class SmarterRouter {
       const systemInstruction = systemPrompt || `Sei il MasterOrchestrator di SmarterRouter.
 Il tuo compito è analizzare la richiesta dell'utente e decidere come gestirla.
 Scegli una delle seguenti azioni:
-- DIRECT_ANSWER: Per domande generali, programmazione, scrittura, o richieste che richiedono la tua intelligenza superiore.
+- DIRECT_ANSWER: Per domande generali, programmazione, scrittura, o richieste che richiedono la tua intelligenza superiore ma senza un ragionamento esplicito passo-passo.
+- REASONING_TASK: Per problemi complessi, logica, matematica, o quando l'utente chiede esplicitamente di ragionare, pensare passo dopo passo o mostrare il processo.
 - LOCAL_DELEGATION: Per domande molto semplici, saluti, o richieste banali che un piccolo modello locale può gestire.
 - AGENT_JOB: Per richieste di addestramento (training/fine-tuning), valutazione (evaluation/benchmarking), o unione (merging) di modelli.
 
@@ -163,8 +181,13 @@ Se scegli AGENT_JOB, devi anche estrarre i parametri per il job (es. task_type: 
             properties: {
               action: {
                 type: Type.STRING,
-                enum: ["DIRECT_ANSWER", "LOCAL_DELEGATION", "AGENT_JOB"],
+                enum: ["DIRECT_ANSWER", "REASONING_TASK", "LOCAL_DELEGATION", "AGENT_JOB"],
                 description: "L'azione da intraprendere."
+              },
+              reasoningDomain: {
+                type: Type.STRING,
+                enum: ["MATH", "LOGIC", "CODE", "GENERAL"],
+                description: "Il dominio di ragionamento (solo se action è REASONING_TASK)."
               },
               jobDetails: {
                 type: Type.OBJECT,
@@ -212,6 +235,12 @@ Se scegli AGENT_JOB, devi anche estrarre i parametri per il job (es. task_type: 
         return {
           action: "LOCAL_DELEGATION",
           message: "Delego questa richiesta al modello locale per risparmiare risorse."
+        };
+      } else if (result.action === "REASONING_TASK") {
+        return {
+          action: "REASONING_TASK",
+          reasoningDomain: result.reasoningDomain || "GENERAL",
+          message: `Richiesto ragionamento complesso (${result.reasoningDomain || "GENERAL"}). Attivazione esperto CoT...`
         };
       } else {
         // DIRECT_ANSWER

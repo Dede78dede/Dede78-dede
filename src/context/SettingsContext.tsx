@@ -40,6 +40,8 @@ export interface AppSettings {
   macros: Macro[];
   profiles: Profile[];
   activeProfileId: string;
+  requireLocalPrivacy: boolean;
+  maxCostPer1kTokens: number;
 }
 
 interface SettingsContextType {
@@ -116,6 +118,8 @@ const defaultSettings: AppSettings = {
   macros: defaultMacros,
   profiles: defaultProfiles,
   activeProfileId: 'profile-default',
+  requireLocalPrivacy: false,
+  maxCostPer1kTokens: 0.01,
 };
 
 // 3. Helper per Cookie Partizionati (CHIPS)

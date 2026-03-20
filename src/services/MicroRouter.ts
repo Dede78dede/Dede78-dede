@@ -28,7 +28,8 @@ export class MicroRouter {
     { label: 'translation', examples: ['traduci questo testo in inglese', 'come si dice in francese', 'translate to spanish'] },
     { label: 'summarization', examples: ['riassumi questo articolo', 'fammi un sunto', 'summarize the following text', 'tldr'] },
     { label: 'simple_qa', examples: ['qual è la capitale della francia?', 'chi ha scritto i promessi sposi?', 'what is the speed of light?'] },
-    { label: 'formatting', examples: ['formatta questo testo come una lista', 'correggi gli errori grammaticali', 'fix typos'] }
+    { label: 'formatting', examples: ['formatta questo testo come una lista', 'correggi gli errori grammaticali', 'fix typos'] },
+    { label: 'reasoning', examples: ['pensa passo dopo passo', 'ragiona', 'spiega il processo logico', 'analizza il problema', 'risolvi passo passo', 'think step by step', 'let\'s think step by step', 'scrivi codice complesso', 'dimostra matematicamente'] }
   ];
 
   // Pre-computed embeddings for the local intents
@@ -146,10 +147,10 @@ export class MicroRouter {
    * @param threshold The similarity threshold (0.0 to 1.0) to trigger local routing.
    * @returns An object containing the routing decision and confidence score.
    */
-  public async route(prompt: string, threshold: number = 0.65): Promise<{ shouldRouteLocal: boolean; confidence: number; intent?: string }> {
+  public async route(prompt: string, threshold: number = 0.65): Promise<{ shouldRouteLocal: boolean; confidence: number; intent?: string; reasoningType: 'DIRECT' | 'COT' }> {
     if (!this.extractor) {
       console.warn('[MicroRouter] Not initialized, defaulting to cloud routing.');
-      return { shouldRouteLocal: false, confidence: 0 };
+      return { shouldRouteLocal: false, confidence: 0, reasoningType: 'DIRECT' };
     }
 
     try {
@@ -166,14 +167,22 @@ export class MicroRouter {
 
       // console.log(`[MicroRouter] Best match: ${bestMatch.label} (Score: ${bestMatch.score.toFixed(3)})`);
 
+      const isReasoning = bestMatch.label === 'reasoning' && bestMatch.score >= threshold;
+      const reasoningType = isReasoning ? 'COT' : 'DIRECT';
+
       if (bestMatch.score >= threshold) {
-        return { shouldRouteLocal: true, confidence: bestMatch.score, intent: bestMatch.label };
+        return { 
+          shouldRouteLocal: bestMatch.label !== 'reasoning', // Route reasoning to specialized models (often not the smallest local ones)
+          confidence: bestMatch.score, 
+          intent: bestMatch.label,
+          reasoningType
+        };
       }
 
-      return { shouldRouteLocal: false, confidence: bestMatch.score };
+      return { shouldRouteLocal: false, confidence: bestMatch.score, reasoningType: 'DIRECT' };
     } catch (error) {
       console.error('[MicroRouter] Routing error:', error);
-      return { shouldRouteLocal: false, confidence: 0 };
+      return { shouldRouteLocal: false, confidence: 0, reasoningType: 'DIRECT' };
     }
   }
 }

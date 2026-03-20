@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Menu, X, LogIn, LogOut } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { Dashboard } from './pages/Dashboard';
+import { Models } from './pages/Models';
 import { Inference } from './pages/Inference';
 import { Workflows } from './pages/Workflows';
 import { Projects } from './pages/Projects';
@@ -21,6 +22,34 @@ function AppContent() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { user, login, logout } = useAuth();
+
+  useEffect(() => {
+    const checkInitialState = async () => {
+      try {
+        if (!('caches' in window)) return;
+        const cacheKeys = await caches.keys();
+        const transformersCaches = cacheKeys.filter(key => key.includes('transformers'));
+        
+        let hasModels = false;
+        for (const cacheName of transformersCaches) {
+          const cache = await caches.open(cacheName);
+          const requests = await cache.keys();
+          if (requests.length > 0) {
+            hasModels = true;
+            break;
+          }
+        }
+        
+        if (!hasModels) {
+          setCurrentView('models');
+        }
+      } catch (err) {
+        console.error("Error checking initial cache:", err);
+      }
+    };
+    
+    checkInitialState();
+  }, []);
 
   const handleViewChange = (view: string) => {
     setCurrentView(view);
@@ -102,7 +131,8 @@ function AppContent() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto pt-16 md:pt-0 w-full">
-        {currentView === 'dashboard' && <Dashboard />}
+        {currentView === 'dashboard' && <Dashboard onNavigate={handleViewChange} />}
+        {currentView === 'models' && <Models />}
         {currentView === 'inference' && <Inference />}
         {currentView === 'workflows' && <Workflows />}
         {currentView === 'projects' && <Projects />}

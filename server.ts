@@ -25,6 +25,98 @@ async function startServer() {
   // The orchestrator logic has been moved to the frontend (SmarterRouter.ts)
   // to comply with the requirement of calling Gemini API only from the frontend.
 
+  // --- OPENAI COMPATIBLE API (L1) ---
+  app.post("/v1/chat/completions", async (req, res) => {
+    try {
+      const { messages, model, temperature, max_tokens } = req.body;
+      if (!messages || !Array.isArray(messages)) {
+        return res.status(400).json({ error: { message: "messages is required and must be an array" } });
+      }
+
+      // Extract the last user message
+      const lastMessage = messages[messages.length - 1];
+      const prompt = lastMessage.content;
+
+      // Import PolicyEngine dynamically to avoid circular dependencies if any
+      const { PolicyEngine } = await import("./src/services/PolicyEngine");
+      
+      // Determine policy based on headers or default
+      const policy = {
+        requireLocalPrivacy: req.headers['x-require-local'] === 'true',
+        maxCostPer1kTokens: req.headers['x-max-cost'] ? parseFloat(req.headers['x-max-cost'] as string) : undefined
+      };
+
+      const selectedModel = PolicyEngine.evaluate(prompt, policy);
+      
+      // Execute the model
+      let responseText = "";
+      
+      if (selectedModel.isLocal) {
+        // Call Ollama locally
+        const ollamaRes = await fetch("http://localhost:11434/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: selectedModel.model,
+            messages: messages,
+            stream: false
+          })
+        });
+        if (!ollamaRes.ok) throw new Error("Ollama failed");
+        const data = await ollamaRes.json();
+        responseText = data.message?.content || "";
+      } else {
+        // Call Cloud Provider
+        const { CloudProviderStrategy } = await import("./src/services/ModelStrategies");
+        const strategy = new CloudProviderStrategy();
+        
+        // Map provider to API Key env var
+        const envKeyMap: Record<string, string> = {
+          'openai': 'OPENAI_API_KEY',
+          'anthropic': 'ANTHROPIC_API_KEY',
+          'groq': 'GROQ_API_KEY',
+          'deepseek': 'DEEPSEEK_API_KEY'
+        };
+        
+        const apiKey = process.env[envKeyMap[selectedModel.provider]];
+        if (!apiKey) throw new Error(`API Key missing for provider ${selectedModel.provider}`);
+
+        responseText = await strategy.execute(prompt, {
+          provider: selectedModel.provider as any,
+          model: selectedModel.model,
+          temperature: temperature,
+          apiKey: apiKey
+        }, {});
+      }
+
+      // Format response as OpenAI completion
+      res.json({
+        id: `chatcmpl-${Date.now()}`,
+        object: "chat.completion",
+        created: Math.floor(Date.now() / 1000),
+        model: selectedModel.model,
+        choices: [
+          {
+            index: 0,
+            message: {
+              role: "assistant",
+              content: responseText
+            },
+            finish_reason: "stop"
+          }
+        ],
+        usage: {
+          prompt_tokens: 0,
+          completion_tokens: 0,
+          total_tokens: 0
+        }
+      });
+    } catch (error: any) {
+      console.error("[OpenAI API Error]", error);
+      res.status(500).json({ error: { message: error.message } });
+    }
+  });
+
   // --- OBSIDIAN MCP SERVER (L3) ---
   app.post("/api/obsidian/read", (req, res) => {
     const { vaultPath, filePath } = req.body;

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Activity, Cpu, HardDrive, Network, CheckCircle2, Clock, AlertCircle, LucideIcon, Download, Plus, GitMerge } from 'lucide-react';
+import { Activity, Cpu, HardDrive, Network, CheckCircle2, Clock, AlertCircle, LucideIcon, Download, Plus, GitMerge, DownloadCloud } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { manifestoContent } from '../utils/manifesto';
 import { AgentService, Agent, Job } from '../services/agentService';
@@ -10,7 +10,7 @@ import { useSettings } from '../context/SettingsContext';
  * Displays an overview of system resources, active agents, and pending jobs.
  * Provides actions to download the manifesto and create test jobs.
  */
-export function Dashboard() {
+export function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void }) {
   const { settings } = useSettings();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -75,6 +75,13 @@ export function Dashboard() {
           <p className="text-zinc-400 mt-1">Panoramica dello stato degli agenti e delle risorse locali.</p>
         </div>
         <div className="flex gap-3">
+          <button
+            onClick={() => onNavigate && onNavigate('models')}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-zinc-950 rounded-lg text-sm font-medium transition-colors"
+          >
+            <DownloadCloud className="w-4 h-4" />
+            Scarica Modello
+          </button>
           <button
             onClick={handleCreateTestJob}
             className="flex items-center gap-2 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-lg text-sm font-medium transition-colors border border-zinc-700"

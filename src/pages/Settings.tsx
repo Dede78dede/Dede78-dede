@@ -185,6 +185,37 @@ export function Settings() {
               </div>
               <p className="text-xs text-zinc-500 mt-2">0 = Massima velocità (Modelli Locali), 1 = Massima qualità (Master Gemini).</p>
             </div>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-sm font-medium text-zinc-300">Privacy Mode (Local Only)</label>
+                <p className="text-xs text-zinc-500 mt-1">Forza l'uso esclusivo di modelli locali per garantire la privacy dei dati.</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={localSettings.requireLocalPrivacy}
+                  onChange={(e) => handleChange('requireLocalPrivacy', e.target.checked)}
+                  className="sr-only peer" 
+                />
+                <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+              </label>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-zinc-300 mb-2">Budget Massimo (USD per 1k token)</label>
+              <div className="flex items-center gap-4">
+                <input 
+                  type="number" 
+                  step="0.001"
+                  min="0"
+                  value={localSettings.maxCostPer1kTokens}
+                  onChange={(e) => handleChange('maxCostPer1kTokens', parseFloat(e.target.value))}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-4 py-2 text-zinc-100 focus:outline-none focus:border-emerald-500" 
+                />
+              </div>
+              <p className="text-xs text-zinc-500 mt-2">Imposta il costo massimo consentito per i modelli cloud. I modelli più costosi verranno ignorati.</p>
+            </div>
             
             <div className="flex items-center justify-between">
               <div>

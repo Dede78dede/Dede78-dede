@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, Zap, Settings2, Loader2, Database, Cloud, MessageSquare, Plus, Trash2, AlertTriangle, Command } from 'lucide-react';
+import { Send, Bot, User, Zap, Settings2, Loader2, Database, Cloud, MessageSquare, Plus, Trash2, AlertTriangle, Command, ShieldCheck } from 'lucide-react';
+import { ChatMessageContent } from '../components/ChatMessageContent';
 import ReactMarkdown from 'react-markdown';
 import { useLocalModel } from '../hooks/useLocalModel';
 import { LLMCL } from '../utils/llm-cl';
@@ -95,6 +96,70 @@ export function Inference() {
    * Manages chat creation, message appending, streaming responses,
    * and updating the ChatContext.
    */
+  const handleVerify = async (messageIndex: number) => {
+    if (isProcessing) return;
+    
+    const messageToVerify = messages[messageIndex];
+    if (!messageToVerify || messageToVerify.role !== 'assistant') return;
+
+    setIsProcessing(true);
+    const auditSteps: AuditTrailStep[] = [];
+    const startTime = Date.now();
+    const requestId = `req_${Date.now()}`;
+
+    // Extract content without routing badges and <think> tags
+    let contentToVerify = messageToVerify.content.replace(/(?:^|\n\n)(⚡|🧠|⚠️)\s*\*([^*]+)\*(?:\n\n|$)/g, '').trim();
+    contentToVerify = contentToVerify.replace(/<think>[\s\S]*?(?:<\/think>|$)/, '').trim();
+
+    const verificationPrompt = `Sei un Verifier Agent esperto. Il tuo compito è applicare la Chain of Verification (CoVe) per verificare la seguente risposta e mitigare eventuali allucinazioni.
+
+Risposta da verificare:
+"""
+${contentToVerify}
+"""
+
+Esegui i seguenti passaggi:
+1. Identifica le affermazioni chiave nella risposta.
+2. Formula domande di verifica per ciascuna affermazione.
+3. Rispondi alle domande di verifica in modo indipendente.
+4. Genera una valutazione finale: la risposta originale è corretta, parzialmente corretta o errata? Fornisci le correzioni necessarie.
+
+Mostra il tuo ragionamento tra i tag <think> e </think>.`;
+
+    try {
+      setMessages(prev => {
+        const updated: Message[] = [...prev, { role: 'user', content: "Verifica questa risposta applicando la Chain of Verification (CoVe).", model: 'user' }];
+        if (currentChatId) updateChat(currentChatId, updated).catch(console.error);
+        return updated;
+      });
+      
+      const response = await generateWithGemini(verificationPrompt, undefined, "gemini-3.1-pro-preview");
+      
+      auditSteps.push({
+        component: 'VerifierAgent (CoVe)',
+        action: 'Verifica Risposta',
+        durationMs: Date.now() - startTime,
+        status: 'success'
+      });
+      metricsService.recordAuditTrail(requestId, auditSteps);
+
+      setMessages(prev => {
+        const updated: Message[] = [...prev, { role: 'assistant', content: `🛡️ *Verifier Agent: Analisi completata*\n\n${response}`, model: 'master/gemini-verifier' }];
+        if (currentChatId) updateChat(currentChatId, updated).catch(console.error);
+        return updated;
+      });
+    } catch (error: any) {
+      console.error("Verification error:", error);
+      setMessages(prev => {
+        const updated: Message[] = [...prev, { role: 'assistant', content: `Errore durante la verifica: ${error.message}`, model: 'error' }];
+        if (currentChatId) updateChat(currentChatId, updated).catch(console.error);
+        return updated;
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isProcessing) return;
     
@@ -163,7 +228,8 @@ export function Inference() {
             });
             
             // Check if it's a deep reasoning task (Tier 2)
-            const isDeepReasoning = prompt.toLowerCase().includes('pensa') || 
+            const isDeepReasoning = microRoute.reasoningType === 'COT' || 
+                                    prompt.toLowerCase().includes('pensa') || 
                                     prompt.toLowerCase().includes('ragiona') || 
                                     prompt.toLowerCase().includes('analizza') ||
                                     prompt.toLowerCase().includes('codice');
@@ -236,7 +302,11 @@ export function Inference() {
 
             // 3. Master Orchestrator (Cloud - Tier 3)
             const masterStart = Date.now();
-            const result = await SmarterRouter.orchestrate(prompt, systemPrompt);
+            const policy = {
+              requireLocalPrivacy: settings.requireLocalPrivacy,
+              maxCostPer1kTokens: settings.maxCostPer1kTokens
+            };
+            const result = await SmarterRouter.orchestrate(prompt, systemPrompt, policy);
             
             auditSteps.push({
               component: 'MasterOrchestrator (Tier 3)',
@@ -261,6 +331,35 @@ export function Inference() {
 
               if (onChunkCb && localResponse) onChunkCb(localResponse);
               return "⚡ *Master: Delegato al modello locale...*\n\n" + (localResponse || "Errore durante l'inferenza locale.");
+            } else if (result.action === 'REASONING_TASK') {
+              if (onChunkCb) onChunkCb(`🧠 *Master: ${result.message}*\n\n`);
+              const masterStartReasoning = Date.now();
+              
+              let domainPrompt = "";
+              switch (result.reasoningDomain) {
+                case "MATH":
+                  domainPrompt = "Sei un esperto matematico. Usa un ragionamento rigoroso, formale e passo-passo per risolvere il problema.";
+                  break;
+                case "LOGIC":
+                  domainPrompt = "Sei un esperto di logica. Analizza le premesse, identifica eventuali fallacie e deduci la conclusione in modo strutturato.";
+                  break;
+                case "CODE":
+                  domainPrompt = "Sei un ingegnere del software senior. Analizza il problema, progetta l'architettura, scrivi codice pulito e ottimizzato, e spiega le tue scelte.";
+                  break;
+                default:
+                  domainPrompt = "Sei un assistente analitico. Ragiona in modo approfondito e strutturato.";
+                  break;
+              }
+              
+              const cotSystemPrompt = (systemPrompt ? systemPrompt + "\n\n" : "") + domainPrompt + "\nDevi mostrare il tuo processo di ragionamento racchiuso tra i tag <think> e </think> prima di fornire la risposta finale.";
+              const response = await generateWithGemini(prompt, onChunkCb, "gemini-3.1-pro-preview", cotSystemPrompt);
+              auditSteps.push({
+                component: `MasterOrchestrator (CoT - ${result.reasoningDomain || 'GENERAL'})`,
+                action: 'Generazione CoT',
+                durationMs: Date.now() - masterStartReasoning,
+                status: 'success'
+              });
+              return `🧠 *Master: ${result.message}*\n\n` + response;
             } else {
               if (onChunkCb) onChunkCb(result.message);
               return result.message;
@@ -617,12 +716,25 @@ export function Inference() {
                   {msg.model}
                 </span>
               )}
-              <div className={`p-3 md:p-4 rounded-2xl text-sm md:text-base ${
+              <div className={`p-3 md:p-4 rounded-2xl text-sm md:text-base w-full ${
                 msg.role === 'user' 
                   ? 'bg-zinc-800 text-zinc-100 rounded-tr-sm whitespace-pre-wrap' 
-                  : 'bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-tl-sm markdown-body'
+                  : 'bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-tl-sm'
               }`}>
-                {msg.role === 'user' ? msg.content : <ReactMarkdown>{msg.content}</ReactMarkdown>}
+                <ChatMessageContent role={msg.role} content={msg.content} />
+                {msg.role === 'assistant' && msg.model !== 'system' && !msg.model.includes('verifier') && (
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      onClick={() => handleVerify(i)}
+                      disabled={isProcessing}
+                      className="flex items-center gap-1.5 text-xs font-medium text-emerald-500/70 hover:text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 py-1.5 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Applica Chain of Verification (CoVe)"
+                    >
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      Verifica Risposta
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
