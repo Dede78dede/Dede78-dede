@@ -2,9 +2,24 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
+import { WebSocketServer } from "ws";
 import db from "./src/db/database"; // Initialize SQLite DB
 import { jobScheduler } from "./src/services/JobScheduler";
+import { workflowEngine } from "./src/services/WorkflowEngine";
 import { GoogleGenAI, Type } from "@google/genai";
+
+const getSafeVaultPath = (vaultPath: string) => {
+  const dataDir = path.resolve(process.cwd(), 'data');
+  // Strip leading slashes and drive letters to make it relative
+  const relativePath = vaultPath.replace(/^([a-zA-Z]:)?[\/\\]+/, '').replace(/^(\.\.[\/\\])+/, '');
+  const resolvedVaultPath = path.resolve(dataDir, relativePath);
+  if (!resolvedVaultPath.startsWith(dataDir)) {
+    throw new Error("Invalid vault path");
+  }
+  return resolvedVaultPath;
+};
+
+import { JobStatus, WorkflowStatus, WorkflowStepStatus } from './src/types/enums';
 
 async function startServer() {
   const app = express();
@@ -15,6 +30,11 @@ async function startServer() {
 
   // Middleware to parse JSON bodies
   app.use(express.json());
+
+  app.post("/api/log", (req, res) => {
+    fs.writeFileSync('browser_log.txt', JSON.stringify(req.body, null, 2));
+    res.json({ status: "ok" });
+  });
 
   // API routes FIRST
   app.get("/api/health", (req, res) => {
@@ -67,8 +87,8 @@ async function startServer() {
         responseText = data.message?.content || "";
       } else {
         // Call Cloud Provider
-        const { CloudProviderStrategy } = await import("./src/services/ModelStrategies");
-        const strategy = new CloudProviderStrategy();
+        const { StrategyFactory } = await import("./src/services/ModelStrategies");
+        const strategy = StrategyFactory.getStrategy(selectedModel.provider);
         
         // Map provider to API Key env var
         const envKeyMap: Record<string, string> = {
@@ -117,14 +137,68 @@ async function startServer() {
     }
   });
 
+  // --- LOCAL RAG SYSTEM (L2) ---
+  let documentIndexer: any = null;
+
+  app.post("/api/rag/index", async (req, res) => {
+    const { vaultPath } = req.body;
+    if (!vaultPath) return res.status(400).json({ error: "Missing vaultPath" });
+
+    try {
+      const safeVaultPath = getSafeVaultPath(vaultPath);
+      if (!documentIndexer || documentIndexer.vaultPath !== safeVaultPath) {
+        const { DocumentIndexer } = await import('./src/services/RAG/DocumentIndexer');
+        const vectorStorePath = path.join(process.cwd(), '.rag_cache', 'vectors.json');
+        documentIndexer = new DocumentIndexer(safeVaultPath, vectorStorePath);
+      }
+
+      if (documentIndexer.isIndexing) {
+        return res.status(409).json({ error: "Indexing already in progress" });
+      }
+
+      // Start indexing asynchronously
+      documentIndexer.indexVault().catch(console.error);
+      res.json({ message: "Indexing started" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/rag/query", async (req, res) => {
+    const { vaultPath, query, topK } = req.body;
+    if (!vaultPath || !query) return res.status(400).json({ error: "Missing vaultPath or query" });
+
+    try {
+      const safeVaultPath = getSafeVaultPath(vaultPath);
+      if (!documentIndexer || documentIndexer.vaultPath !== safeVaultPath) {
+        const { DocumentIndexer } = await import('./src/services/RAG/DocumentIndexer');
+        const vectorStorePath = path.join(process.cwd(), '.rag_cache', 'vectors.json');
+        documentIndexer = new DocumentIndexer(safeVaultPath, vectorStorePath);
+      }
+
+      const results = await documentIndexer.query(query, topK || 3);
+      res.json({ results });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/rag/status", async (req, res) => {
+    if (!documentIndexer) {
+      return res.json({ isIndexing: false, totalChunks: 0 });
+    }
+    res.json(documentIndexer.getStats());
+  });
+
   // --- OBSIDIAN MCP SERVER (L3) ---
   app.post("/api/obsidian/read", (req, res) => {
     const { vaultPath, filePath } = req.body;
     if (!vaultPath || !filePath) return res.status(400).json({ error: "Missing vaultPath or filePath" });
     
     try {
-      const fullPath = path.resolve(vaultPath, filePath);
-      if (!fullPath.startsWith(path.resolve(vaultPath))) {
+      const safeVaultPath = getSafeVaultPath(vaultPath);
+      const fullPath = path.resolve(safeVaultPath, filePath);
+      if (!fullPath.startsWith(safeVaultPath)) {
         return res.status(403).json({ error: "Access denied: Path traversal detected" });
       }
       if (!fs.existsSync(fullPath)) {
@@ -142,8 +216,9 @@ async function startServer() {
     if (!vaultPath || !filePath || content === undefined) return res.status(400).json({ error: "Missing parameters" });
 
     try {
-      const fullPath = path.resolve(vaultPath, filePath);
-      if (!fullPath.startsWith(path.resolve(vaultPath))) {
+      const safeVaultPath = getSafeVaultPath(vaultPath);
+      const fullPath = path.resolve(safeVaultPath, filePath);
+      if (!fullPath.startsWith(safeVaultPath)) {
         return res.status(403).json({ error: "Access denied: Path traversal detected" });
       }
       const dir = path.dirname(fullPath);
@@ -162,8 +237,9 @@ async function startServer() {
     if (!vaultPath) return res.status(400).json({ error: "Missing vaultPath" });
 
     try {
-      const targetDir = path.resolve(vaultPath, directory);
-      if (!targetDir.startsWith(path.resolve(vaultPath))) {
+      const safeVaultPath = getSafeVaultPath(vaultPath);
+      const targetDir = path.resolve(safeVaultPath, directory);
+      if (!targetDir.startsWith(safeVaultPath)) {
         return res.status(403).json({ error: "Access denied: Path traversal detected" });
       }
       if (!fs.existsSync(targetDir)) {
@@ -213,7 +289,7 @@ async function startServer() {
       db.transaction(() => {
         // Create workflow
         db.prepare('INSERT INTO workflows (id, name, status, global_context) VALUES (?, ?, ?, ?)')
-          .run(workflowId, name, 'PENDING', JSON.stringify(global_context || {}));
+          .run(workflowId, name, WorkflowStatus.PENDING, JSON.stringify(global_context || {}));
 
         // Create steps
         const insertStep = db.prepare('INSERT INTO workflow_steps (id, workflow_id, step_order, name, model_config, input_prompt_template, status) VALUES (?, ?, ?, ?, ?, ?, ?)');
@@ -227,14 +303,14 @@ async function startServer() {
             step.name,
             JSON.stringify(step.model_config),
             step.input_prompt_template,
-            'PENDING'
+            WorkflowStepStatus.PENDING
           );
         });
 
         // Create a job to start the workflow
         const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         db.prepare('INSERT INTO jobs (id, task_type, status, progress, logs, payload) VALUES (?, ?, ?, ?, ?, ?)')
-          .run(jobId, 'WORKFLOW', 'PENDING', 0, 'Workflow queued', JSON.stringify({ workflow_id: workflowId }));
+          .run(jobId, 'WORKFLOW', JobStatus.PENDING, 0, 'Workflow queued', JSON.stringify({ workflow_id: workflowId }));
       })();
 
       res.json({ success: true, workflowId });
@@ -245,7 +321,14 @@ async function startServer() {
 
   app.get("/api/workflows", (req, res) => {
     try {
-      const workflows = db.prepare('SELECT * FROM workflows ORDER BY created_at DESC LIMIT 50').all();
+      const workflows = db.prepare(`
+        SELECT w.*, 
+               (SELECT COUNT(*) FROM workflow_steps WHERE workflow_id = w.id) as total_steps,
+               (SELECT COUNT(*) FROM workflow_steps WHERE workflow_id = w.id AND status = '${WorkflowStepStatus.COMPLETED}') as completed_steps
+        FROM workflows w 
+        ORDER BY w.created_at DESC 
+        LIMIT 50
+      `).all();
       res.json({ workflows });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -261,7 +344,142 @@ async function startServer() {
     }
   });
 
+  // --- JULES & ANTIGRAVITY (INTELLIGENT AGENTS) ---
+  app.post("/api/agents/jules/analyze", async (req, res) => {
+    const { filePath, newContent, projectContext } = req.body;
+    if (!filePath || !newContent) return res.status(400).json({ error: "Missing filePath or newContent" });
+
+    try {
+      const { JulesAgent } = await import('./src/services/JulesAgent');
+      const jules = new JulesAgent();
+      const impactReport = await jules.analyzeImpact(filePath, newContent, projectContext || "Contesto generico del progetto");
+      res.json({ impactReport });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/agents/antigravity/scan", async (req, res) => {
+    const { payloadType, payloadContent } = req.body;
+    if (!payloadType || !payloadContent) return res.status(400).json({ error: "Missing payloadType or payloadContent" });
+
+    try {
+      const { AntigravityAgent } = await import('./src/services/AntigravityAgent');
+      const antigravity = new AntigravityAgent();
+      const securityReport = await antigravity.scanPayload(payloadType, payloadContent);
+      
+      // Se il rischio è CRITICAL, potremmo bloccare la richiesta o generare un alert
+      if (securityReport.riskLevel === "CRITICAL") {
+        console.warn("[Antigravity] Rilevata minaccia CRITICA:", securityReport.vulnerabilities);
+        // In un sistema reale, qui scatterebbe un webhook verso PagerDuty o un blocco della PR
+      }
+
+      res.json({ securityReport });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // --- GOOGLE A2A PROTOCOL (FASE 4) ---
+  app.post("/api/a2a/simulate", async (req, res) => {
+    const { sourceAgent, targetAgent, taskType, payload, context } = req.body;
+    if (!sourceAgent || !targetAgent || !taskType || !payload) {
+      return res.status(400).json({ error: "Missing required A2A parameters" });
+    }
+
+    try {
+      const { A2ABroker } = await import('./src/services/A2ABroker');
+      
+      const message = {
+        messageId: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        sourceAgent,
+        targetAgent,
+        taskType,
+        payload,
+        context: context || "Nessun contesto aggiuntivo"
+      };
+
+      const response = await A2ABroker.delegateTask(message);
+      
+      // Se l'agente diagnostico suggerisce di aprire un ticket, lo creiamo automaticamente
+      if (response.status === "SUCCESS" && response.suggestedActions?.includes("CREATE_TICKET")) {
+        // Creazione di un Job per Jules/Antigravity
+        const jobId = `job_ticket_${Date.now()}`;
+        db.prepare('INSERT INTO jobs (id, task_type, status, progress, logs, payload) VALUES (?, ?, ?, ?, ?, ?)')
+          .run(jobId, 'CODE_FIX', JobStatus.PENDING, 0, 'Ticket creato automaticamente da A2A', JSON.stringify({ issue: response.result }));
+        
+        (response as any).ticketCreated = jobId;
+      }
+
+      res.json({ a2aResponse: response });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // --- AGENT MANAGER & JOB QUEUE (L3) ---
+  // --- FRONTEND WORKER API ---
+  app.get("/api/worker/jobs", (req, res) => {
+    try {
+      const stmt = db.prepare(`SELECT * FROM jobs WHERE status = '${JobStatus.PENDING_FRONTEND}' ORDER BY created_at ASC LIMIT 1`);
+      const job = stmt.get();
+      res.json({ job: job || null });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/worker/jobs/:id/complete", (req, res) => {
+    const { id } = req.params;
+    const { status, result, logs } = req.body;
+    try {
+      const stmt = db.prepare("UPDATE jobs SET status = ?, progress = ?, logs = logs || ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?");
+      stmt.run(status, status === JobStatus.COMPLETED ? 100 : 0, `\n[Frontend Worker] ${logs}\nResult: ${result}`, id);
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/worker/workflow-steps", (req, res) => {
+    try {
+      const stmt = db.prepare(`SELECT * FROM workflow_steps WHERE status = '${WorkflowStepStatus.PENDING_FRONTEND}' ORDER BY step_order ASC LIMIT 1`);
+      const step = stmt.get();
+      if (step) {
+        const workflow = db.prepare("SELECT global_context FROM workflows WHERE id = ?").get((step as any).workflow_id);
+        res.json({ step, context: workflow ? (workflow as any).global_context : '{}' });
+      } else {
+        res.json({ step: null });
+      }
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/worker/workflow-steps/:id/complete", (req, res) => {
+    const { id } = req.params;
+    const { status, result, context } = req.body;
+    try {
+      const step = db.prepare("SELECT workflow_id FROM workflow_steps WHERE id = ?").get(id) as any;
+      if (!step) return res.status(404).json({ error: "Step not found" });
+
+      db.prepare("UPDATE workflow_steps SET status = ?, output_result = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(status, result, id);
+      
+      if (status === WorkflowStepStatus.COMPLETED && context) {
+        db.prepare("UPDATE workflows SET global_context = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(context, step.workflow_id);
+        // Resume the workflow job
+        db.prepare(`UPDATE jobs SET status = '${JobStatus.PENDING}', updated_at = CURRENT_TIMESTAMP WHERE task_type = 'WORKFLOW' AND payload LIKE ?`).run(`%${step.workflow_id}%`);
+      } else if (status === WorkflowStepStatus.FAILED) {
+        db.prepare(`UPDATE workflows SET status = '${WorkflowStatus.FAILED}', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(step.workflow_id);
+        // Fail the workflow job
+        db.prepare(`UPDATE jobs SET status = '${JobStatus.FAILED}', updated_at = CURRENT_TIMESTAMP WHERE task_type = 'WORKFLOW' AND payload LIKE ?`).run(`%${step.workflow_id}%`);
+      }
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
   app.post("/api/jobs/create", (req, res) => {
     const { task_type, payload } = req.body;
     if (!task_type) return res.status(400).json({ error: "Missing task_type" });
@@ -269,7 +487,8 @@ async function startServer() {
     try {
       const id = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const stmt = db.prepare('INSERT INTO jobs (id, task_type, status, progress, logs, payload) VALUES (?, ?, ?, ?, ?, ?)');
-      stmt.run(id, task_type, 'PENDING', 0, 'Job queued', JSON.stringify(payload || {}));
+      
+      stmt.run(id, task_type, JobStatus.PENDING, 0, 'Job queued', JSON.stringify(payload || {}));
       res.json({ success: true, jobId: id });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -332,7 +551,48 @@ async function startServer() {
           body.messages.push({ role: "system", content: systemPrompt });
         }
       }
-      body.messages.push({ role: "user", content: prompt });
+
+      if (Array.isArray(prompt)) {
+        // Context Circulation: Handle Message[]
+        for (const msg of prompt) {
+          if (msg.role === 'system') continue; // Handled above
+          
+          let content: any = msg.content;
+          
+          // Handle attachments if present
+          if (msg.attachments && msg.attachments.length > 0) {
+            if (provider === "openai" || provider === "anthropic") {
+              content = [{ type: "text", text: msg.content }];
+              for (const att of msg.attachments) {
+                if (att.data && att.mimeType.startsWith('image/')) {
+                  if (provider === "openai") {
+                    content.push({
+                      type: "image_url",
+                      image_url: { url: `data:${att.mimeType};base64,${att.data}` }
+                    });
+                  } else if (provider === "anthropic") {
+                    content.push({
+                      type: "image",
+                      source: {
+                        type: "base64",
+                        media_type: att.mimeType,
+                        data: att.data
+                      }
+                    });
+                  }
+                }
+              }
+            } else {
+              // Groq/DeepSeek might not support images, fallback to text
+              content = msg.content + "\n[Allegato ignorato: modello non supporta immagini]";
+            }
+          }
+          
+          body.messages.push({ role: msg.role === 'user' ? 'user' : 'assistant', content });
+        }
+      } else {
+        body.messages.push({ role: "user", content: prompt });
+      }
 
       if (provider === "openai") {
         url = "https://api.openai.com/v1/chat/completions";
@@ -399,9 +659,15 @@ async function startServer() {
   });
 
   // Vite middleware for development
+  let vite: any;
   if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
+    vite = await createViteServer({
+      server: { 
+        middlewareMode: true,
+        hmr: {
+          port: 24678
+        }
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
@@ -413,9 +679,60 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     // console.log(`Server running on http://localhost:${PORT}`);
   });
+
+  server.on('error', (e: any) => {
+    if (e.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use. Retrying in 1 second...`);
+      setTimeout(() => {
+        server.close();
+        server.listen(PORT, "0.0.0.0");
+      }, 1000);
+    } else {
+      console.error('Server error:', e);
+    }
+  });
+
+  const wss = new WebSocketServer({ server, path: '/api/ws' });
+  
+  wss.on('error', (e: any) => {
+    console.error('WebSocketServer error:', e);
+  });
+
+  // Attach wss to app so routes can broadcast
+  app.set('wss', wss);
+
+  const broadcastPending = () => {
+    wss.clients.forEach(client => {
+      if (client.readyState === 1) { // WebSocket.OPEN
+        client.send(JSON.stringify({ type: 'PENDING_FRONTEND_TASK' }));
+      }
+    });
+  };
+
+  jobScheduler.on('pending_frontend', broadcastPending);
+  workflowEngine.on('pending_frontend', broadcastPending);
+
+  wss.on('connection', (ws) => {
+    // console.log('Client connected to WebSocket');
+    ws.on('error', console.error);
+  });
+
+  // Graceful shutdown
+  const shutdown = () => {
+    console.log('Shutting down gracefully...');
+    jobScheduler.stop();
+    try {
+      wss.close();
+      server.close();
+    } catch (e) {}
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
 }
 
 startServer();

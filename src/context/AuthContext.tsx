@@ -79,7 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{ user, loading, login, logout }}>
-      {!loading && children}
+      {loading ? (
+        <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4">
+          <div className="w-10 h-10 border-4 border-zinc-800 border-t-emerald-500 rounded-full animate-spin mb-4"></div>
+          <p className="text-zinc-400 font-medium">Verifica autenticazione in corso...</p>
+        </div>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   );
 }

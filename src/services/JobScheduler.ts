@@ -1,8 +1,7 @@
 import db from '../db/database';
 import { EventEmitter } from 'events';
 import { workflowEngine } from './WorkflowEngine';
-
-export type JobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+import { JobStatus, WorkflowStatus } from '../types/enums';
 
 export interface Job {
   id: string;
@@ -51,7 +50,7 @@ class JobScheduler extends EventEmitter {
     try {
       // Find a pending job
       const stmt = db.prepare('SELECT * FROM jobs WHERE status = ? ORDER BY created_at ASC LIMIT 1');
-      const job = stmt.get('PENDING') as Job | undefined;
+      const job = stmt.get(JobStatus.PENDING) as Job | undefined;
 
       if (job) {
         this.executeJob(job);
@@ -65,22 +64,22 @@ class JobScheduler extends EventEmitter {
     // console.log(`[JobScheduler] Starting job ${job.id} (${job.task_type})`);
     
     // Mark as running
-    this.updateJobStatus(job.id, 'RUNNING', 0, 'Job started');
+    this.updateJobStatus(job.id, JobStatus.RUNNING, 0, 'Job started');
 
     const jobPromise = this.processTask(job)
       .then(() => {
         // console.log(`[JobScheduler] Job ${job.id} completed successfully`);
         // Don't overwrite logs if processTask already set them to COMPLETED
         const currentJob = db.prepare('SELECT status, logs FROM jobs WHERE id = ?').get(job.id) as Job;
-        if (currentJob && currentJob.status !== 'COMPLETED' && currentJob.status !== 'FAILED') {
-          this.updateJobStatus(job.id, 'COMPLETED', 100, currentJob.logs + '\nJob completed successfully');
+        if (currentJob && currentJob.status !== JobStatus.COMPLETED && currentJob.status !== JobStatus.FAILED && currentJob.status !== JobStatus.PENDING_FRONTEND && currentJob.status !== JobStatus.WAITING_FRONTEND) {
+          this.updateJobStatus(job.id, JobStatus.COMPLETED, 100, currentJob.logs + '\nJob completed successfully');
         }
       })
       .catch((error) => {
         console.error(`[JobScheduler] Job ${job.id} failed:`, error);
         const currentJob = db.prepare('SELECT logs FROM jobs WHERE id = ?').get(job.id) as Job;
         const logs = currentJob ? currentJob.logs + `\nError: ${error.message}` : `Error: ${error.message}`;
-        this.updateJobStatus(job.id, 'FAILED', job.progress, logs);
+        this.updateJobStatus(job.id, JobStatus.FAILED, job.progress, logs);
       })
       .finally(() => {
         this.activeJobs.delete(job.id);
@@ -117,7 +116,8 @@ class JobScheduler extends EventEmitter {
         await this.simulateLongTask(job.id, 20000, 'Merging models...');
         break;
       case 'EVALUATION':
-        await this.simulateLongTask(job.id, 15000, 'Evaluating model performance...');
+      case 'complex_research':
+        await this.executeGeminiTask(job.id, job.task_type, payload);
         break;
       case 'RESEARCH':
         await this.simulateLongTask(job.id, 10000, 'Gathering research data...');
@@ -129,34 +129,43 @@ class JobScheduler extends EventEmitter {
     }
   }
 
+  private async executeGeminiTask(jobId: string, task_type: string, payload: any) {
+    let currentLogs = `Delegating ${task_type} task to frontend worker...\n`;
+    this.updateJobStatus(jobId, JobStatus.PENDING_FRONTEND, 10, currentLogs);
+    this.emit('pending_frontend');
+  }
+
   private async processWorkflow(workflowId: string, jobId: string) {
     let hasMoreSteps = true;
     let currentLogs = `Starting workflow ${workflowId}...\n`;
-    this.updateJobStatus(jobId, 'RUNNING', 0, currentLogs);
+    this.updateJobStatus(jobId, JobStatus.RUNNING, 0, currentLogs);
 
     while (hasMoreSteps) {
       try {
         hasMoreSteps = await workflowEngine.processNextStep(workflowId);
         if (hasMoreSteps) {
           currentLogs += `Step completed. Checking for next step...\n`;
-          this.updateJobStatus(jobId, 'RUNNING', 50, currentLogs); // Update progress based on steps completed
+          this.updateJobStatus(jobId, JobStatus.RUNNING, 50, currentLogs); // Update progress based on steps completed
         }
       } catch (error: any) {
         currentLogs += `Workflow failed: ${error.message}\n`;
-        this.updateJobStatus(jobId, 'FAILED', 100, currentLogs);
+        this.updateJobStatus(jobId, JobStatus.FAILED, 100, currentLogs);
         throw error; // Re-throw to mark job as failed
       }
     }
     
     // Check if workflow actually failed (e.g. all retries exhausted)
     const workflow = db.prepare('SELECT status FROM workflows WHERE id = ?').get(workflowId) as { status: string };
-    if (workflow && workflow.status === 'FAILED') {
+    if (workflow && workflow.status === WorkflowStatus.FAILED) {
       currentLogs += `Workflow ${workflowId} finished with FAILED status.\n`;
-      this.updateJobStatus(jobId, 'FAILED', 100, currentLogs);
+      this.updateJobStatus(jobId, JobStatus.FAILED, 100, currentLogs);
       throw new Error(`Workflow ${workflowId} failed`);
-    } else {
+    } else if (workflow && workflow.status === WorkflowStatus.COMPLETED) {
       currentLogs += `Workflow ${workflowId} finished successfully.\n`;
-      this.updateJobStatus(jobId, 'COMPLETED', 100, currentLogs);
+      this.updateJobStatus(jobId, JobStatus.COMPLETED, 100, currentLogs);
+    } else {
+      currentLogs += `Workflow ${workflowId} paused, waiting for frontend worker.\n`;
+      this.updateJobStatus(jobId, JobStatus.WAITING_FRONTEND, 50, currentLogs);
     }
   }
 
@@ -165,13 +174,13 @@ class JobScheduler extends EventEmitter {
     const stepDuration = durationMs / steps;
     
     let currentLogs = initialLog + '\n';
-    this.updateJobStatus(jobId, 'RUNNING', 0, currentLogs);
+    this.updateJobStatus(jobId, JobStatus.RUNNING, 0, currentLogs);
 
     for (let i = 1; i <= steps; i++) {
       await new Promise(resolve => setTimeout(resolve, stepDuration));
       const progress = Math.floor((i / steps) * 100);
       currentLogs += `Step ${i}/${steps} completed (${progress}%)\n`;
-      this.updateJobStatus(jobId, 'RUNNING', progress, currentLogs);
+      this.updateJobStatus(jobId, JobStatus.RUNNING, progress, currentLogs);
     }
   }
 

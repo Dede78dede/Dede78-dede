@@ -1,0 +1,199 @@
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { generateWithGemini } from '../services/geminiService';
+
+export const AgentWorker: React.FC = () => {
+  const [isWorking, setIsWorking] = useState(false);
+  const [currentTask, setCurrentTask] = useState<string | null>(null);
+  const isWorkingRef = useRef(false);
+
+  const checkPendingTasks = useCallback(async () => {
+    if (isWorkingRef.current) return;
+
+    try {
+      isWorkingRef.current = true;
+      setIsWorking(true);
+      
+      // 1. Check for pending jobs
+      const jobRes = await fetch('/api/worker/jobs');
+      const jobData = await jobRes.json();
+      
+      if (jobData.job) {
+        await processJob(jobData.job);
+        isWorkingRef.current = false;
+        setIsWorking(false);
+        // Check again immediately in case there are more tasks
+        checkPendingTasks();
+        return; 
+      }
+
+      // 2. Check for pending workflow steps
+      const stepRes = await fetch('/api/worker/workflow-steps');
+      const stepData = await stepRes.json();
+      
+      if (stepData.step) {
+        await processWorkflowStep(stepData.step, stepData.context);
+        isWorkingRef.current = false;
+        setIsWorking(false);
+        // Check again immediately
+        checkPendingTasks();
+        return;
+      }
+
+    } catch (error) {
+      console.error('[AgentWorker] Task check error:', error);
+    } finally {
+      isWorkingRef.current = false;
+      setIsWorking(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    // Initial check on mount
+    checkPendingTasks();
+
+    // Setup WebSocket connection
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/api/ws`;
+    
+    let ws: WebSocket | null = null;
+    let reconnectTimeout: NodeJS.Timeout;
+
+    const connect = () => {
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        // console.log('[AgentWorker] WebSocket connected');
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'PENDING_FRONTEND_TASK') {
+            checkPendingTasks();
+          }
+        } catch (e) {
+          console.error('[AgentWorker] WebSocket message error:', e);
+        }
+      };
+
+      ws.onclose = () => {
+        // console.log('[AgentWorker] WebSocket disconnected, reconnecting...');
+        reconnectTimeout = setTimeout(connect, 3000);
+      };
+
+      ws.onerror = (error) => {
+        console.error('[AgentWorker] WebSocket error:', error);
+        ws?.close();
+      };
+    };
+
+    connect();
+
+    return () => {
+      clearTimeout(reconnectTimeout);
+      if (ws) {
+        ws.onclose = null; // Prevent reconnect loop on unmount
+        ws.close();
+      }
+    };
+  }, [checkPendingTasks]);
+
+  const processJob = async (job: any) => {
+    setCurrentTask(`Job: ${job.task_type}`);
+    try {
+      const payload = JSON.parse(job.payload || '{}');
+      const prompt = payload.prompt || JSON.stringify(payload);
+      const context = payload.context || '';
+      
+      const response = await generateWithGemini(
+        `Esegui una ricerca approfondita e un'analisi dettagliata su questo argomento:\n\n${prompt}`,
+        undefined, // onChunk
+        'gemini-3.1-pro-preview', // modelName
+        context + "\nSei un agente di ricerca autonomo. Il tuo compito è analizzare a fondo la richiesta, cercare informazioni rilevanti e produrre un report completo e strutturato.", // systemPrompt
+        true // enableWebSearch
+      );
+
+      await fetch(`/api/worker/jobs/${job.id}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'COMPLETED',
+          result: response,
+          logs: 'Task completed successfully by frontend worker.'
+        })
+      });
+    } catch (error: any) {
+      console.error('[AgentWorker] Job failed:', error);
+      await fetch(`/api/worker/jobs/${job.id}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'FAILED',
+          result: '',
+          logs: `Error: ${error.message}`
+        })
+      });
+    } finally {
+      setCurrentTask(null);
+    }
+  };
+
+  const processWorkflowStep = async (step: any, contextStr: string) => {
+    setCurrentTask(`Workflow Step: ${step.name}`);
+    try {
+      const config = JSON.parse(step.model_config || '{}');
+      const context = JSON.parse(contextStr || '{}');
+      
+      // Interpolate prompt
+      const prompt = step.input_prompt_template.replace(/\{\{([^}]+)\}\}/g, (match: string, key: string) => {
+        const trimmedKey = key.trim();
+        return context[trimmedKey] !== undefined ? String(context[trimmedKey]) : match;
+      });
+
+      const response = await generateWithGemini(
+        prompt,
+        undefined, // onChunk
+        config.model || 'gemini-3.1-flash-preview', // modelName
+        config.systemPrompt // systemPrompt
+      );
+
+      // Update context
+      context[step.name] = response;
+
+      await fetch(`/api/worker/workflow-steps/${step.id}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'COMPLETED',
+          result: response,
+          context: JSON.stringify(context)
+        })
+      });
+    } catch (error: any) {
+      console.error('[AgentWorker] Workflow step failed:', error);
+      await fetch(`/api/worker/workflow-steps/${step.id}/complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'FAILED',
+          result: '',
+          context: ''
+        })
+      });
+    } finally {
+      setCurrentTask(null);
+    }
+  };
+
+  if (!isWorking && !currentTask) return null;
+
+  return (
+    <div className="fixed bottom-4 right-4 bg-zinc-900 border border-zinc-800 rounded-lg p-3 shadow-lg flex items-center space-x-3 z-50 text-xs text-zinc-300">
+      <div className="w-4 h-4 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin"></div>
+      <div>
+        <p className="font-medium text-white">Agent Worker Active</p>
+        <p className="text-zinc-500">{currentTask || 'Processing background tasks...'}</p>
+      </div>
+    </div>
+  );
+};

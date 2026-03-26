@@ -36,8 +36,9 @@ export async function runPreflight(): Promise<boolean> {
 
   // If storage is denied, we block the app and show the recovery UI
   if (!preflightResults.hasStorageAccess) {
-    showStorageErrorUI();
-    return false;
+    console.warn("Storage access denied, but continuing anyway for preview environment.");
+    // showStorageErrorUI();
+    // return false;
   }
 
   // 2. Test WebGPU

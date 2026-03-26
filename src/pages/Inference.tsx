@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
-import { Send, Bot, User, Zap, Settings2, Loader2, Database, Cloud, MessageSquare, Plus, Trash2, AlertTriangle, Command, ShieldCheck } from 'lucide-react';
+import { Send, Bot, User, Zap, Settings2, Loader2, Database, Cloud, MessageSquare, Plus, Trash2, AlertTriangle, Command, ShieldCheck, AlertCircle, Paperclip, X, Globe, Code2 } from 'lucide-react';
 import { ChatMessageContent } from '../components/ChatMessageContent';
 import ReactMarkdown from 'react-markdown';
 import { useLocalModel } from '../hooks/useLocalModel';
+import { useWebLLM } from '../hooks/useWebLLM';
 import { LLMCL } from '../utils/llm-cl';
 import { metricsService, AuditTrailStep } from '../services/MetricsService';
 import { memorySystem } from '../services/MemorySystem';
 import { generateWithGemini } from '../services/geminiService';
 import { generateWithOpenAI, generateWithAnthropic, generateWithGroq, generateWithDeepSeek } from '../services/cloudLlmService';
 import { useSettings } from '../context/SettingsContext';
-import { useChat, Message } from '../context/ChatContext';
+import { useChat, Message, MessageAttachment } from '../context/ChatContext';
 import { SmarterRouter } from '../services/SmarterRouter';
 import { microRouter } from '../services/MicroRouter';
 import { preflightResults } from '../preflight';
@@ -27,11 +28,14 @@ export function Inference() {
     { role: 'assistant', content: 'SmarterRouter v1.0 pronto. Inserisci un prompt per testare i modelli locali o il Master Cloud.', model: 'system' }
   ]);
   const [input, setInput] = useState('');
+  const [attachments, setAttachments] = useState<MessageAttachment[]>([]);
+  const [useWebSearch, setUseWebSearch] = useState(false);
   const [selectedModel, setSelectedModel] = useState('auto');
   const [isProcessing, setIsProcessing] = useState(false);
   const [ollamaReachable, setOllamaReachable] = useState(preflightResults.isOllamaReachable);
   const [showMacros, setShowMacros] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { updateSettings } = useSettings();
 
   // Listen for Ollama connection breakout success
@@ -77,6 +81,17 @@ export function Inference() {
 
   const { generate: generateLocal, backend, isReady, isLoading: isModelLoading } = useLocalModel(localModelId);
 
+  // Hook for WebLLM (Native GGUF)
+  const webLlmModelId = selectedModel.startsWith('webllm:') ? selectedModel.replace('webllm:', '') : null;
+  const { generate: generateWebLlm, isReady: isWebLlmReady, isLoading: isWebLlmLoading, progress: webLlmProgress, loadModel: loadWebLlmModel, error: webLlmError } = useWebLLM(webLlmModelId);
+
+  // Auto-load WebLLM model when selected
+  useEffect(() => {
+    if (webLlmModelId && !isWebLlmReady && !isWebLlmLoading) {
+      loadWebLlmModel();
+    }
+  }, [webLlmModelId, isWebLlmReady, isWebLlmLoading, loadWebLlmModel]);
+
   // Filter macros based on input
   const filteredMacros = settings.macros.filter(m => 
     input.startsWith('/') && m.trigger.toLowerCase().startsWith(input.toLowerCase())
@@ -89,6 +104,39 @@ export function Inference() {
   const handleMacroSelect = (macroPrompt: string) => {
     setInput(macroPrompt);
     setShowMacros(false);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+
+    Array.from(files).forEach(file => {
+      // Check size (e.g., limit to 100MB as per Gemini update)
+      if (file.size > 100 * 1024 * 1024) {
+        alert(`Il file ${file.name} supera il limite di 100MB.`);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64String = (event.target?.result as string).split(',')[1];
+        setAttachments(prev => [...prev, {
+          mimeType: file.type || 'application/octet-stream',
+          data: base64String,
+          name: file.name
+        }]);
+      };
+      reader.readAsDataURL(file);
+    });
+    
+    // Reset input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
   /**
@@ -161,7 +209,7 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
   };
 
   const handleSend = async () => {
-    if (!input.trim() || isProcessing) return;
+    if ((!input.trim() && attachments.length === 0) || isProcessing) return;
     
     let activeChatId = currentChatId;
     if (!activeChatId) {
@@ -173,9 +221,10 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
       }
     }
 
-    const newMessages: Message[] = [...messages, { role: 'user', content: input, model: 'user' }];
+    const newMessages: Message[] = [...messages, { role: 'user', content: input, model: 'user', attachments: attachments.length > 0 ? [...attachments] : undefined }];
     setMessages(newMessages);
     setInput('');
+    setAttachments([]);
     setIsProcessing(true);
     
     // Save user message immediately
@@ -206,13 +255,96 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
     const auditSteps: AuditTrailStep[] = [];
 
     const activeProfile = settings.profiles.find(p => p.id === settings.activeProfileId) || settings.profiles[0];
-    const systemPrompt = activeProfile?.systemPrompt;
+    let systemPrompt = activeProfile?.systemPrompt || '';
 
     try {
+      // Antigravity Shield Check
+      if (settings.useAntigravityShield) {
+        try {
+          const shieldStart = Date.now();
+          
+          // Determine payload type dynamically
+          let payloadType = 'API_REQUEST';
+          if (input.includes('Exception') || input.includes('Error:') || input.includes('Traceback') || input.includes('at ')) {
+            payloadType = 'SRE_LOGS';
+          } else if (input.includes('function') || input.includes('const ') || input.includes('class ') || input.includes('import ')) {
+            payloadType = 'CODE_PR';
+          } else if (input.includes('resource "') || input.includes('apiVersion:')) {
+            payloadType = 'IAC_AUDIT';
+          }
+
+          const res = await fetch('/api/agents/antigravity/scan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payloadType, content: input })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            auditSteps.push({
+              component: 'Antigravity Shield',
+              action: 'Scansione Sicurezza',
+              durationMs: Date.now() - shieldStart,
+              details: `Rischio: ${data.riskLevel}`,
+              status: data.riskLevel === 'CRITICAL' || data.riskLevel === 'HIGH' ? 'error' : 'success'
+            });
+            if (data.riskLevel === 'CRITICAL' || data.riskLevel === 'HIGH') {
+              const blockMessage = `🛡️ **Antigravity Shield: Richiesta Bloccata**\n\nLivello di rischio: **${data.riskLevel}**\n\n${data.findings.map((f: any) => `- ${f}`).join('\n')}\n\n*Disattiva lo scudo nelle impostazioni per procedere a tuo rischio.*`;
+              setMessages(prev => {
+                const updated = [...prev];
+                const lastIndex = updated.length - 1;
+                updated[lastIndex] = {
+                  ...updated[lastIndex],
+                  content: blockMessage,
+                  model: 'antigravity-shield'
+                };
+                updateChat(activeChatId as string, updated).catch(console.error);
+                return updated;
+              });
+              metricsService.recordAuditTrail(requestId, auditSteps);
+              setIsProcessing(false);
+              return;
+            }
+          }
+        } catch (e) {
+          console.error("Antigravity Shield failed", e);
+        }
+      }
+
+      // RAG Context Injection
+      if (settings.useLocalRag && settings.obsidianVaultPath) {
+        try {
+          const ragStart = Date.now();
+          const res = await fetch('/api/rag/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vaultPath: settings.obsidianVaultPath, query: input, topK: 3 })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.results && data.results.length > 0) {
+              const contextText = data.results.map((r: any) => `[File: ${r.filePath}]\n${r.content}`).join('\n\n');
+              systemPrompt += `\n\nContesto aggiuntivo dai documenti locali dell'utente:\n${contextText}\n\nUsa questo contesto per rispondere alla domanda se pertinente.`;
+              
+              auditSteps.push({
+                component: 'Local RAG',
+                action: 'Recupero Contesto',
+                durationMs: Date.now() - ragStart,
+                details: `Trovati ${data.results.length} frammenti rilevanti`,
+                status: 'success'
+              });
+            }
+          }
+        } catch (e) {
+          console.error("RAG Query failed", e);
+        }
+      }
+
       // 4-Level Memory System Integration
       const memoryResult = await memorySystem.query(
-        input,
-        async (prompt, onChunkCb) => {
+        newMessages,
+        async (msgs, onChunkCb) => {
+          const prompt = msgs[msgs.length - 1].content;
+          
           // L4 Compute Execution
           if (targetModel === 'orchestrator') {
             // 1. Try MicroRouter (Local Embedding / BitNet b1 tier)
@@ -352,7 +484,7 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
               }
               
               const cotSystemPrompt = (systemPrompt ? systemPrompt + "\n\n" : "") + domainPrompt + "\nDevi mostrare il tuo processo di ragionamento racchiuso tra i tag <think> e </think> prima di fornire la risposta finale.";
-              const response = await generateWithGemini(prompt, onChunkCb, "gemini-3.1-pro-preview", cotSystemPrompt);
+              const response = await generateWithGemini(newMessages, onChunkCb, "gemini-3.1-pro-preview", cotSystemPrompt, useWebSearch);
               auditSteps.push({
                 component: `MasterOrchestrator (CoT - ${result.reasoningDomain || 'GENERAL'})`,
                 action: 'Generazione CoT',
@@ -360,6 +492,96 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
                 status: 'success'
               });
               return `🧠 *Master: ${result.message}*\n\n` + response;
+            } else if (result.action === 'WEB_SEARCH') {
+              if (onChunkCb) onChunkCb(`🌍 *Master: ${result.message}*\n\n`);
+              const masterStartSearch = Date.now();
+              const response = await generateWithGemini(newMessages, onChunkCb, "gemini-3.1-pro-preview", systemPrompt, true);
+              auditSteps.push({
+                component: `MasterOrchestrator (Web Search)`,
+                action: 'Generazione con Grounding',
+                durationMs: Date.now() - masterStartSearch,
+                status: 'success'
+              });
+              return `🌍 *Master: ${result.message}*\n\n` + response;
+            } else if (result.action === 'FULL_CYCLE_RESOLUTION') {
+              if (onChunkCb) onChunkCb(`🤖 *Master: ${result.message}*\n\n`);
+              const a2aStart = Date.now();
+              
+              try {
+                const res = await fetch('/api/a2a/simulate', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    sourceAgent: 'Vertex_Main_Agent',
+                    targetAgent: 'FULL_CYCLE_ORCHESTRATOR',
+                    taskType: 'FULL_CYCLE_RESOLUTION',
+                    context: result.jobDetails?.context || systemPrompt,
+                    payload: result.jobDetails?.payload || { prompt }
+                  })
+                });
+                
+                if (!res.ok) throw new Error("Errore durante l'orchestrazione A2A");
+                
+                const data = await res.json();
+                const a2aResult = data.a2aResponse;
+                
+                let responseText = `**Stato Risoluzione:** ${a2aResult.status}\n\n`;
+                
+                if (a2aResult.workflowTrace) {
+                  responseText += `**Traccia Workflow:**\n`;
+                  a2aResult.workflowTrace.forEach((step: any) => {
+                    responseText += `- ${step.step}: ${step.status}\n`;
+                  });
+                  responseText += `\n`;
+                }
+                
+                if (a2aResult.result && a2aResult.result.finalMessage) {
+                   responseText += `**Risultato:**\n${a2aResult.result.finalMessage}\n\n`;
+                   if (a2aResult.result.diagnosis) {
+                     responseText += `**Diagnosi ADK:**\n${a2aResult.result.diagnosis}\n\n`;
+                   }
+                   if (a2aResult.result.appliedPatch) {
+                     responseText += `**Patch Jules:**\n\`\`\`javascript\n${a2aResult.result.appliedPatch}\n\`\`\`\n\n`;
+                   }
+                } else {
+                   responseText += `**Risultato:**\n${typeof a2aResult.result === 'string' ? a2aResult.result : JSON.stringify(a2aResult.result, null, 2)}\n\n`;
+                }
+
+                auditSteps.push({
+                  component: 'A2A Orchestrator',
+                  action: 'Full Cycle Resolution',
+                  durationMs: Date.now() - a2aStart,
+                  status: a2aResult.status === 'SUCCESS' || a2aResult.status === 'RESOLVED_AUTONOMOUSLY' ? 'success' : 'warning'
+                });
+                
+                return `🤖 *Master: Orchestrazione A2A completata.*\n\n` + responseText;
+
+              } catch (e: any) {
+                 auditSteps.push({
+                  component: 'A2A Orchestrator',
+                  action: 'Full Cycle Resolution',
+                  durationMs: Date.now() - a2aStart,
+                  details: e.message,
+                  status: 'error'
+                });
+                return `🤖 *Master: Errore durante l'orchestrazione A2A.*\n\n` + e.message;
+              }
+            } else if (result.action === 'AGENT_JOB') {
+              if (onChunkCb) onChunkCb(`🤖 *Master: Avvio job asincrono per task complesso...*\n\n`);
+              // Create a job via API
+              const res = await fetch('/api/jobs/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  task_type: result.jobDetails?.task_type || 'complex_research',
+                  payload: result.jobDetails?.payload || { prompt, context: systemPrompt }
+                })
+              });
+              const data = await res.json();
+              let response = `Job creato con ID: ${data.jobId}. Puoi monitorarlo nella sezione Agent Jobs.\n\n`;
+              // Fallback response while job runs
+              response += await generateWithGemini(newMessages, onChunkCb, "gemini-3.1-flash-preview", systemPrompt, useWebSearch);
+              return `🤖 *Master: ${result.message}*\n\n` + response;
             } else {
               if (onChunkCb) onChunkCb(result.message);
               return result.message;
@@ -368,23 +590,37 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
             const response = await generateLocal(prompt);
             if (onChunkCb && response) onChunkCb(response);
             return response || "Errore durante l'inferenza locale.";
+          } else if (targetModel.startsWith('webllm:')) {
+            const webLlmStart = Date.now();
+            if (!isWebLlmReady) {
+              if (onChunkCb) onChunkCb("⏳ *Caricamento modello WebLLM in corso...*\n\n");
+              await loadWebLlmModel();
+            }
+            const response = await generateWebLlm(prompt, onChunkCb, systemPrompt);
+            auditSteps.push({
+              component: 'WebLLM (Native GGUF)',
+              action: 'Generazione Edge',
+              durationMs: Date.now() - webLlmStart,
+              status: 'success'
+            });
+            return response || "Errore durante l'inferenza WebLLM.";
           } else if (targetModel.startsWith('master/')) {
             const masterType = targetModel.split('/')[1];
             switch (masterType) {
               case 'gemini-2.5-flash':
-                return await generateWithGemini(prompt, onChunkCb, "gemini-2.5-flash", systemPrompt);
+                return await generateWithGemini(newMessages, onChunkCb, "gemini-2.5-flash", systemPrompt, useWebSearch);
               case 'gemini':
-                return await generateWithGemini(prompt, onChunkCb, "gemini-3.1-pro-preview", systemPrompt);
+                return await generateWithGemini(newMessages, onChunkCb, "gemini-3.1-pro-preview", systemPrompt, useWebSearch);
               case 'openai':
-                return await generateWithOpenAI(prompt, settings.openAiApiKey, onChunkCb, systemPrompt);
+                return await generateWithOpenAI(newMessages, settings.openAiApiKey, onChunkCb, systemPrompt);
               case 'anthropic':
-                return await generateWithAnthropic(prompt, settings.anthropicApiKey, onChunkCb, systemPrompt);
+                return await generateWithAnthropic(newMessages, settings.anthropicApiKey, onChunkCb, systemPrompt);
               case 'groq':
-                return await generateWithGroq(prompt, settings.groqApiKey, onChunkCb, systemPrompt);
+                return await generateWithGroq(newMessages, settings.groqApiKey, onChunkCb, systemPrompt);
               case 'deepseek':
-                return await generateWithDeepSeek(prompt, settings.deepseekApiKey, onChunkCb, systemPrompt);
+                return await generateWithDeepSeek(newMessages, settings.deepseekApiKey, onChunkCb, systemPrompt);
               default:
-                return await generateWithGemini(prompt, onChunkCb, "gemini-3-flash-preview", systemPrompt);
+                return await generateWithGemini(newMessages, onChunkCb, "gemini-3.1-flash-preview", systemPrompt, useWebSearch);
             }
           } else if (targetModel === 'colab') {
             // Call Colab Endpoint
@@ -475,15 +711,51 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
       // Parse and execute LLM-CL actions from response
       const { cleanText, actions } = LLMCL.parseActions(memoryResult.response);
       let actionLog = "";
+      let julesAnalysisLog = "";
       
       if (actions.length > 0) {
         actionLog = "\n\n---\n**Azioni Eseguite (LLM-CL):**\n";
         for (const action of actions) {
-          if (action.type === 'create_file') {
+          if (action.type === 'create_file' || action.type === 'update_file') {
             const filename = action.params.filename || 'untitled.md';
             const content = action.params.content || '';
-            actionLog += `- 📄 Creazione file: \`${filename}\`\n`;
-            // Qui potremmo chiamare ObsidianService.createFile(...)
+            actionLog += `- 📄 ${action.type === 'create_file' ? 'Creazione' : 'Aggiornamento'} file: \`${filename}\`\n`;
+            
+            // Jules Impact Analysis
+            if (settings.useJulesImpactAnalysis) {
+              try {
+                const julesStart = Date.now();
+                const res = await fetch('/api/agents/jules/analyze', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    filePath: filename,
+                    newContent: content,
+                    projectContext: 'Analisi automatica da Inference UI'
+                  })
+                });
+                
+                if (res.ok) {
+                  const data = await res.json();
+                  const impact = data.impactReport;
+                  if (impact) {
+                    julesAnalysisLog += `\n\n---\n**🔍 Jules Impact Analysis (${filename}):**\n`;
+                    julesAnalysisLog += `- **Livello di Impatto:** ${impact.impactLevel || 'Sconosciuto'}\n`;
+                    if (impact.analysis) julesAnalysisLog += `- **Analisi:** ${impact.analysis}\n`;
+                    
+                    auditSteps.push({
+                      component: 'Jules (Code Agent)',
+                      action: 'Analisi Impatto Automatica',
+                      durationMs: Date.now() - julesStart,
+                      details: `File: ${filename}, Impatto: ${impact.impactLevel}`,
+                      status: 'success'
+                    });
+                  }
+                }
+              } catch (e) {
+                console.error("Jules Analysis failed", e);
+              }
+            }
           } else if (action.type === 'update_chart') {
             actionLog += `- 📊 Aggiornamento grafico: \`${action.params.chart_id}\`\n`;
           } else {
@@ -495,7 +767,7 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
       // Update the last message with the final model name and LLM-CL info
       const finalAssistantMessage: Message = {
         role: 'assistant',
-        content: cleanText + actionLog + llmClInfo,
+        content: cleanText + actionLog + julesAnalysisLog + llmClInfo,
         model: `${targetModel} via ${memoryResult.source}`
       };
 
@@ -656,8 +928,13 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
                 <option value="master/deepseek">DeepSeek Chat</option>
               </optgroup>
               <optgroup label="Local Models (Browser/WebGPU)">
-                <option value="transformers:Xenova/Qwen1.5-0.5B-Chat">Qwen 0.5B</option>
-                <option value="transformers:Xenova/TinyLlama-1.1B-Chat-v1.0">TinyLlama 1.1B</option>
+                <option value="transformers:Xenova/Qwen1.5-0.5B-Chat">Qwen 0.5B (Transformers.js)</option>
+                <option value="transformers:Xenova/TinyLlama-1.1B-Chat-v1.0">TinyLlama 1.1B (Transformers.js)</option>
+              </optgroup>
+              <optgroup label="Native GGUF (WebLLM)">
+                <option value="webllm:Llama-3.2-1B-Instruct-q4f16_1-MLC">Llama 3.2 1B (q4)</option>
+                <option value="webllm:Llama-3.2-3B-Instruct-q4f16_1-MLC">Llama 3.2 3B (q4)</option>
+                <option value="webllm:Phi-3.5-mini-instruct-q4f16_1-MLC">Phi 3.5 Mini (q4)</option>
               </optgroup>
               <optgroup label="Remote/Local APIs">
                 <option value="colab">Colab Endpoint (ngrok)</option>
@@ -665,12 +942,78 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
               </optgroup>
             </select>
           </div>
+          <button
+            onClick={() => updateSettings({ useAntigravityShield: !settings.useAntigravityShield })}
+            className={`flex items-center gap-2 border rounded-lg px-3 py-1.5 w-full md:w-auto text-sm transition-colors ${
+              settings.useAntigravityShield 
+                ? 'bg-purple-500/20 border-purple-500/50 text-purple-400' 
+                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+            }`}
+            title={settings.useAntigravityShield ? "Antigravity Shield Attivo" : "Antigravity Shield Disattivato"}
+          >
+            <ShieldCheck className="w-4 h-4 flex-shrink-0" />
+            <span className="hidden md:inline">Shield</span>
+          </button>
+          <button
+            onClick={() => updateSettings({ useJulesImpactAnalysis: !settings.useJulesImpactAnalysis })}
+            className={`flex items-center gap-2 border rounded-lg px-3 py-1.5 w-full md:w-auto text-sm transition-colors ${
+              settings.useJulesImpactAnalysis 
+                ? 'bg-amber-500/20 border-amber-500/50 text-amber-400' 
+                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+            }`}
+            title={settings.useJulesImpactAnalysis ? "Jules Impact Analysis Attivo" : "Jules Impact Analysis Disattivato"}
+          >
+            <Code2 className="w-4 h-4 flex-shrink-0" />
+            <span className="hidden md:inline">Jules</span>
+          </button>
+          <button
+            onClick={() => updateSettings({ useLocalRag: !settings.useLocalRag })}
+            className={`flex items-center gap-2 border rounded-lg px-3 py-1.5 w-full md:w-auto text-sm transition-colors ${
+              settings.useLocalRag 
+                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400' 
+                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+            }`}
+            title={settings.useLocalRag ? "RAG Locale Attivo" : "RAG Locale Disattivato"}
+          >
+            <Database className="w-4 h-4 flex-shrink-0" />
+            <span className="hidden md:inline">RAG</span>
+          </button>
+          <button
+            onClick={() => setUseWebSearch(!useWebSearch)}
+            className={`flex items-center gap-2 border rounded-lg px-3 py-1.5 w-full md:w-auto text-sm transition-colors ${
+              useWebSearch 
+                ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' 
+                : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200'
+            }`}
+            title={useWebSearch ? "Ricerca Web Attiva" : "Ricerca Web Disattivata"}
+          >
+            <Globe className="w-4 h-4 flex-shrink-0" />
+            <span className="hidden md:inline">Web</span>
+          </button>
           {selectedModel.startsWith('transformers:') && (
             <div className="text-xs flex items-center gap-1">
               {isModelLoading ? (
                 <span className="text-yellow-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Caricamento...</span>
               ) : isReady ? (
                 <span className="text-emerald-500 flex items-center gap-1"><Zap className="w-3 h-3" /> Pronto ({backend})</span>
+              ) : (
+                <span className="text-zinc-500">In attesa</span>
+              )}
+            </div>
+          )}
+          {selectedModel.startsWith('webllm:') && (
+            <div className="text-xs flex items-center gap-1">
+              {webLlmError ? (
+                <span className="text-red-500 flex items-center gap-1" title={webLlmError}>
+                  <AlertCircle className="w-3 h-3" /> Errore WebLLM
+                </span>
+              ) : isWebLlmLoading ? (
+                <span className="text-yellow-500 flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  {webLlmProgress ? `${Math.round(webLlmProgress.progress * 100)}%` : 'Caricamento...'}
+                </span>
+              ) : isWebLlmReady ? (
+                <span className="text-emerald-500 flex items-center gap-1"><Zap className="w-3 h-3" /> Pronto (WebGPU)</span>
               ) : (
                 <span className="text-zinc-500">In attesa</span>
               )}
@@ -721,7 +1064,7 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
                   ? 'bg-zinc-800 text-zinc-100 rounded-tr-sm whitespace-pre-wrap' 
                   : 'bg-zinc-900 border border-zinc-800 text-zinc-300 rounded-tl-sm'
               }`}>
-                <ChatMessageContent role={msg.role} content={msg.content} />
+                <ChatMessageContent role={msg.role} content={msg.content} attachments={msg.attachments} />
                 {msg.role === 'assistant' && msg.model !== 'system' && !msg.model.includes('verifier') && (
                   <div className="mt-3 flex justify-end">
                     <button
@@ -776,6 +1119,22 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
             </div>
           </div>
         )}
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-3">
+            {attachments.map((att, i) => (
+              <div key={i} className="flex items-center gap-2 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm">
+                <Paperclip className="w-3.5 h-3.5 text-zinc-400" />
+                <span className="text-zinc-200 truncate max-w-[150px]">{att.name || 'Allegato'}</span>
+                <button 
+                  onClick={() => removeAttachment(i)}
+                  className="text-zinc-500 hover:text-red-400 ml-1"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="relative flex items-center gap-2">
           <button
             onClick={() => setShowMacros(!showMacros)}
@@ -787,6 +1146,36 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
             title="Mostra Macro"
           >
             <Command className="w-5 h-5" />
+          </button>
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileChange} 
+            className="hidden" 
+            multiple 
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="p-3 md:p-4 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors flex-shrink-0"
+            title="Allega File"
+          >
+            <Paperclip className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => {
+              const url = prompt("Inserisci l'URL del file (es. gs://... o https://...):");
+              if (url) {
+                setAttachments(prev => [...prev, {
+                  mimeType: 'application/octet-stream', // Default, might need to infer from URL
+                  url: url,
+                  name: url.split('/').pop() || 'URL Allegato'
+                }]);
+              }
+            }}
+            className="p-3 md:p-4 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-colors flex-shrink-0"
+            title="Allega URL"
+          >
+            <Cloud className="w-5 h-5" />
           </button>
           <div className="relative flex-1 flex items-center">
             <input
@@ -806,7 +1195,7 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
             />
             <button 
               onClick={handleSend}
-              disabled={!input.trim() || isProcessing}
+              disabled={(!input.trim() && attachments.length === 0) || isProcessing}
               className="absolute right-2 p-2 bg-emerald-500 text-zinc-950 rounded-lg hover:bg-emerald-400 disabled:opacity-50 disabled:hover:bg-emerald-500 transition-colors"
             >
               <Send className="w-4 h-4" />

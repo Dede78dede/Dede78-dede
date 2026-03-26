@@ -42,6 +42,9 @@ export interface AppSettings {
   activeProfileId: string;
   requireLocalPrivacy: boolean;
   maxCostPer1kTokens: number;
+  useLocalRag: boolean;
+  useAntigravityShield: boolean;
+  useJulesImpactAnalysis: boolean;
 }
 
 interface SettingsContextType {
@@ -120,6 +123,9 @@ const defaultSettings: AppSettings = {
   activeProfileId: 'profile-default',
   requireLocalPrivacy: false,
   maxCostPer1kTokens: 0.01,
+  useLocalRag: false,
+  useAntigravityShield: false,
+  useJulesImpactAnalysis: false,
 };
 
 // 3. Helper per Cookie Partizionati (CHIPS)

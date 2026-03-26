@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Save, Server, Database, Shield, CheckCircle2, RefreshCw, AlertCircle, Command, User, Plus, Trash2 } from 'lucide-react';
+import { Save, Server, Database, Shield, CheckCircle2, RefreshCw, AlertCircle, Command, User, Plus, Trash2, Box, Loader2, Cloud, UploadCloud, DownloadCloud } from 'lucide-react';
 import { useSettings, Macro, Profile } from '../context/SettingsContext';
+import { useBackup } from '../context/BackupContext';
+import { SyncStatus } from '../core/enums';
+
+const WEBLLM_MODELS = [
+  { id: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', name: 'Llama 3.2 1B (q4)' },
+  { id: 'Llama-3.2-3B-Instruct-q4f16_1-MLC', name: 'Llama 3.2 3B (q4)' },
+  { id: 'Phi-3.5-mini-instruct-q4f16_1-MLC', name: 'Phi 3.5 Mini (q4)' }
+];
 
 /**
  * Settings page component.
@@ -9,6 +17,15 @@ import { useSettings, Macro, Profile } from '../context/SettingsContext';
  */
 export function Settings() {
   const { settings, updateSettings } = useSettings();
+  const { 
+    syncStatus, 
+    isGoogleDriveConnected, 
+    lastBackupTime, 
+    connectGoogleDrive, 
+    disconnectGoogleDrive, 
+    triggerManualBackup, 
+    restoreLatestBackup 
+  } = useBackup();
   const [localSettings, setLocalSettings] = useState(settings);
   const [isSaved, setIsSaved] = useState(false);
 
@@ -18,6 +35,58 @@ export function Settings() {
   const [ollamaSyncStatus, setOllamaSyncStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
   const [notification, setNotification] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [ragStatus, setRagStatus] = useState<{isIndexing: boolean, totalChunks: number} | null>(null);
+
+  // WebLLM Cache State
+  const [webLlmCacheStatus, setWebLlmCacheStatus] = useState<Record<string, boolean>>({});
+  const [isCheckingCache, setIsCheckingCache] = useState(false);
+
+  const checkWebLlmCache = useCallback(async () => {
+    setIsCheckingCache(true);
+    try {
+      const { hasModelInCache } = await import('@mlc-ai/web-llm');
+      const status: Record<string, boolean> = {};
+      for (const model of WEBLLM_MODELS) {
+        status[model.id] = await hasModelInCache(model.id);
+      }
+      setWebLlmCacheStatus(status);
+    } catch (error) {
+      console.error("Failed to check WebLLM cache:", error);
+    } finally {
+      setIsCheckingCache(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkWebLlmCache();
+  }, [checkWebLlmCache]);
+
+  const deleteWebLlmModel = async (modelId: string) => {
+    try {
+      const { deleteModelAllInfoInCache } = await import('@mlc-ai/web-llm');
+      await deleteModelAllInfoInCache(modelId);
+      showNotification(`Modello rimosso dalla cache.`, 'success');
+      checkWebLlmCache();
+    } catch (error: any) {
+      showNotification(`Errore durante la rimozione: ${error.message}`, 'error');
+    }
+  };
+
+  useEffect(() => {
+    if (localSettings.useLocalRag) {
+      const checkStatus = async () => {
+        try {
+          const res = await fetch('/api/rag/status');
+          if (res.ok) {
+            setRagStatus(await res.json());
+          }
+        } catch (e) {}
+      };
+      checkStatus();
+      const interval = setInterval(checkStatus, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [localSettings.useLocalRag]);
 
   /**
    * Displays a temporary notification message.
@@ -233,7 +302,72 @@ export function Settings() {
               </label>
             </div>
 
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between border-t border-zinc-800 pt-6">
+              <div>
+                <label className="block text-sm font-medium text-zinc-300">RAG Locale (Privacy 100%)</label>
+                <p className="text-xs text-zinc-500 mt-1">Usa i tuoi documenti locali come contesto per le risposte.</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input 
+                  type="checkbox" 
+                  checked={localSettings.useLocalRag}
+                  onChange={(e) => handleChange('useLocalRag', e.target.checked)}
+                  className="sr-only peer" 
+                />
+                <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+              </label>
+            </div>
+            
+            {localSettings.useLocalRag && (
+              <div className="bg-zinc-950/50 p-4 rounded-lg border border-zinc-800 space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-zinc-400 mb-1">Percorso Vault Obsidian</label>
+                  <input 
+                    type="text" 
+                    value={localSettings.obsidianVaultPath}
+                    onChange={(e) => handleChange('obsidianVaultPath', e.target.value)}
+                    placeholder="/Users/nome/Documents/Obsidian"
+                    className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-emerald-500 text-sm" 
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-zinc-500">
+                    {ragStatus && (
+                      <span className="flex items-center gap-1.5">
+                        <Database className="w-3.5 h-3.5" />
+                        {ragStatus.isIndexing ? (
+                          <span className="text-emerald-500 animate-pulse">Indicizzazione in corso... ({ragStatus.totalChunks} frammenti)</span>
+                        ) : (
+                          <span>Stato: Pronto ({ragStatus.totalChunks} frammenti indicizzati)</span>
+                        )}
+                      </span>
+                    )}
+                  </div>
+                  <button 
+                    onClick={async () => {
+                      try {
+                        showNotification('Avvio indicizzazione...', 'success');
+                        const res = await fetch('/api/rag/index', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ vaultPath: localSettings.obsidianVaultPath })
+                        });
+                        if (!res.ok) throw new Error(await res.text());
+                        showNotification('Indicizzazione avviata in background.', 'success');
+                      } catch (e: any) {
+                        showNotification(`Errore: ${e.message}`, 'error');
+                      }
+                    }}
+                    disabled={ragStatus?.isIndexing}
+                    className="px-3 py-1.5 bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 rounded-md text-xs font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {ragStatus?.isIndexing ? 'Indicizzazione...' : 'Indicizza Vault Ora'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between border-t border-zinc-800 pt-6">
               <div>
                 <label className="block text-sm font-medium text-zinc-300 mb-2">Cache Similarity Threshold</label>
                 <input 
@@ -549,6 +683,68 @@ export function Settings() {
           </div>
         </section>
 
+        {/* WebLLM Model Management */}
+        <section className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Box className="w-5 h-5 text-orange-400" />
+              <h3 className="font-medium text-zinc-100">Modelli Locali nel Browser (WebLLM)</h3>
+            </div>
+            <button 
+              onClick={checkWebLlmCache}
+              disabled={isCheckingCache}
+              className="text-xs flex items-center gap-1 text-orange-500 hover:text-orange-400 disabled:opacity-50 transition-colors"
+            >
+              <RefreshCw className={`w-3 h-3 ${isCheckingCache ? 'animate-spin' : ''}`} />
+              Aggiorna Stato
+            </button>
+          </div>
+          <div className="p-6 space-y-4">
+            <p className="text-sm text-zinc-400 mb-4">
+              I modelli WebLLM vengono scaricati ed eseguiti direttamente nella cache del tuo browser utilizzando WebGPU. 
+              Puoi gestire lo spazio occupato eliminando i modelli che non utilizzi.
+            </p>
+            
+            <div className="space-y-3">
+              {WEBLLM_MODELS.map(model => {
+                const isCached = webLlmCacheStatus[model.id];
+                return (
+                  <div key={model.id} className="flex items-center justify-between p-3 border border-zinc-800 rounded-lg bg-zinc-950/50">
+                    <div>
+                      <h4 className="text-sm font-medium text-zinc-200">{model.name}</h4>
+                      <p className="text-xs text-zinc-500 font-mono mt-0.5">{model.id}</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {isCheckingCache ? (
+                        <span className="text-xs text-zinc-500 flex items-center gap-1">
+                          <Loader2 className="w-3 h-3 animate-spin" /> Verifica...
+                        </span>
+                      ) : isCached ? (
+                        <span className="text-xs text-emerald-500 flex items-center gap-1 bg-emerald-500/10 px-2 py-1 rounded-full">
+                          <CheckCircle2 className="w-3 h-3" /> Scaricato
+                        </span>
+                      ) : (
+                        <span className="text-xs text-zinc-500 bg-zinc-800 px-2 py-1 rounded-full">
+                          Non scaricato
+                        </span>
+                      )}
+                      
+                      <button
+                        onClick={() => deleteWebLlmModel(model.id)}
+                        disabled={!isCached || isCheckingCache}
+                        className="p-1.5 text-zinc-500 hover:text-red-400 disabled:opacity-30 disabled:hover:text-zinc-500 transition-colors rounded-md hover:bg-red-500/10"
+                        title="Elimina dalla cache"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
         {/* Local Environment */}
         <section className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
           <div className="px-6 py-4 border-b border-zinc-800 flex items-center gap-3">
@@ -632,6 +828,84 @@ export function Settings() {
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-purple-500" 
               />
               <p className="text-xs text-zinc-500 mt-2">Frequenza di aggiornamento della Dashboard per lo stato degli agenti e dei job.</p>
+            </div>
+          </div>
+        </section>
+        {/* Backup & Sync System */}
+        <section className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-zinc-800 flex items-center gap-3">
+            <Cloud className="w-5 h-5 text-sky-400" />
+            <h3 className="font-medium text-zinc-100">Backup & Sincronizzazione</h3>
+          </div>
+          <div className="p-6 space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <label className="block text-sm font-medium text-zinc-300">Google Drive Sync</label>
+                <p className="text-xs text-zinc-500 mt-1">Sincronizza automaticamente le configurazioni e i modelli su Google Drive.</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {isGoogleDriveConnected ? (
+                  <button
+                    onClick={disconnectGoogleDrive}
+                    className="px-3 py-1.5 bg-red-500/10 text-red-400 hover:bg-red-500/20 rounded-md text-xs font-medium transition-colors"
+                  >
+                    Disconnetti
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      // Placeholder config, in a real app these would be environment variables or user inputs
+                      connectGoogleDrive({
+                        clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || 'YOUR_CLIENT_ID',
+                        apiKey: import.meta.env.VITE_GOOGLE_API_KEY || 'YOUR_API_KEY',
+                        scopes: 'https://www.googleapis.com/auth/drive.appdata',
+                        discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
+                      });
+                    }}
+                    className="px-3 py-1.5 bg-sky-500/20 text-sky-400 hover:bg-sky-500/30 rounded-md text-xs font-medium transition-colors"
+                  >
+                    Connetti Drive
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-zinc-800 pt-6">
+              <div>
+                <label className="block text-sm font-medium text-zinc-300">Stato Sincronizzazione</label>
+                <div className="flex items-center gap-2 mt-1">
+                  {syncStatus === SyncStatus.SYNCING && <Loader2 className="w-3 h-3 text-sky-400 animate-spin" />}
+                  {syncStatus === SyncStatus.SUCCESS && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
+                  {syncStatus === SyncStatus.ERROR && <AlertCircle className="w-3 h-3 text-red-400" />}
+                  <span className="text-xs text-zinc-400">
+                    {syncStatus === SyncStatus.IDLE && 'In attesa'}
+                    {syncStatus === SyncStatus.SYNCING && 'Sincronizzazione in corso...'}
+                    {syncStatus === SyncStatus.SUCCESS && 'Sincronizzato'}
+                    {syncStatus === SyncStatus.ERROR && 'Errore di sincronizzazione'}
+                  </span>
+                </div>
+                {lastBackupTime && (
+                  <p className="text-[10px] text-zinc-500 mt-1">Ultimo backup: {new Date(lastBackupTime).toLocaleString()}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={triggerManualBackup}
+                  disabled={syncStatus === SyncStatus.SYNCING}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 rounded-md text-xs font-medium transition-colors disabled:opacity-50"
+                >
+                  <UploadCloud className="w-3.5 h-3.5" />
+                  Backup Ora
+                </button>
+                <button
+                  onClick={restoreLatestBackup}
+                  disabled={syncStatus === SyncStatus.SYNCING}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-zinc-100 rounded-md text-xs font-medium transition-colors disabled:opacity-50"
+                >
+                  <DownloadCloud className="w-3.5 h-3.5" />
+                  Ripristina
+                </button>
+              </div>
             </div>
           </div>
         </section>

@@ -9,10 +9,13 @@ import { Projects } from './pages/Projects';
 import { Monitoring } from './pages/Monitoring';
 import { Settings } from './pages/Settings';
 import { Help } from './pages/Help';
+import { Agents } from './pages/Agents';
 import { SettingsProvider } from './context/SettingsContext';
+import { BackupProvider } from './context/BackupContext';
 import { PermissionsModal } from './components/PermissionsModal';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ChatProvider } from './context/ChatContext';
+import { AgentWorker } from './components/AgentWorker';
 
 /**
  * Main content component that manages the layout, routing (via state),
@@ -135,6 +138,7 @@ function AppContent() {
         {currentView === 'models' && <Models />}
         {currentView === 'inference' && <Inference />}
         {currentView === 'workflows' && <Workflows />}
+        {currentView === 'agents' && <Agents />}
         {currentView === 'projects' && <Projects />}
         {currentView === 'monitoring' && <Monitoring />}
         {currentView === 'settings' && <Settings />}
@@ -149,14 +153,18 @@ function AppContent() {
  * Wraps the application with necessary providers for Authentication,
  * Settings, and Chat state management.
  */
+
 export default function App() {
   return (
     <AuthProvider>
       <SettingsProvider>
-        <ChatProvider>
-          <PermissionsModal />
-          <AppContent />
-        </ChatProvider>
+        <BackupProvider>
+          <ChatProvider>
+            <PermissionsModal />
+            <AppContent />
+            <AgentWorker />
+          </ChatProvider>
+        </BackupProvider>
       </SettingsProvider>
     </AuthProvider>
   );

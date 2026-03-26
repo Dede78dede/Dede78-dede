@@ -4,10 +4,18 @@ import { db } from '../firebase';
 import { useAuth } from './AuthContext';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 
+export interface MessageAttachment {
+  mimeType: string;
+  data?: string; // base64 encoded
+  url?: string; // HTTPS URL or gs:// URL
+  name?: string;
+}
+
 export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   model: string;
+  attachments?: MessageAttachment[];
 }
 
 export interface Chat {
@@ -113,16 +121,47 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     // Limit to 1000 messages to respect Firestore rules
     const limitedMessages = messages.length > 1000 ? messages.slice(-1000) : messages;
 
+    // Strip large base64 data from attachments before saving to Firestore (1MB limit)
+    const safeMessages = limitedMessages.map(msg => {
+      const cleanMsg: any = { ...msg };
+      
+      // Remove undefined fields from the message object
+      Object.keys(cleanMsg).forEach(key => {
+        if (cleanMsg[key] === undefined) {
+          delete cleanMsg[key];
+        }
+      });
+
+      if (cleanMsg.attachments) {
+        cleanMsg.attachments = cleanMsg.attachments.map((att: any) => {
+          const cleanAtt = { ...att };
+          if (cleanAtt.data) {
+            delete cleanAtt.data;
+            cleanAtt.url = cleanAtt.url || 'local-file-not-saved';
+          }
+          // Remove undefined fields from the attachment object
+          Object.keys(cleanAtt).forEach(key => {
+            if (cleanAtt[key] === undefined) {
+              delete cleanAtt[key];
+            }
+          });
+          return cleanAtt;
+        });
+      }
+      
+      return cleanMsg;
+    });
+
     const updateData: any = {
-      messages: limitedMessages,
+      messages: safeMessages,
       updatedAt: serverTimestamp()
     };
 
     if (title) {
       updateData.title = title;
-    } else if (limitedMessages.length === 2 && limitedMessages[1].role === 'user') {
+    } else if (safeMessages.length === 2 && safeMessages[1].role === 'user') {
       // Auto-generate title from first user message only when it's added
-      const firstMsg = limitedMessages[1].content;
+      const firstMsg = safeMessages[1].content;
       updateData.title = firstMsg.length > 30 ? firstMsg.substring(0, 30) + '...' : firstMsg;
     }
 

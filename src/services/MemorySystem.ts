@@ -2,6 +2,8 @@ import { collection, doc, setDoc, query, where, serverTimestamp, onSnapshot } fr
 import { db, auth } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
 
+import { Message } from '../context/ChatContext';
+
 /**
  * Represents the result of a memory query, including the source of the data.
  */
@@ -176,7 +178,7 @@ export class MemorySystem {
    * Queries the memory system for a prompt.
    * Checks caches in order: L1 -> L2 -> L3 -> L4.
    * 
-   * @param prompt The user's input prompt.
+   * @param messages The user's input messages (context).
    * @param executeL4 A function to execute the LLM if no cache hits.
    * @param useSemanticCache Whether to use the L3 semantic cache.
    * @param similarityThreshold The threshold for semantic matching.
@@ -184,46 +186,57 @@ export class MemorySystem {
    * @returns A Promise resolving to the MemoryResult.
    */
   async query(
-    prompt: string, 
-    executeL4: (p: string, onChunk?: (chunk: string) => void) => Promise<string>, 
+    messages: Message[], 
+    executeL4: (msgs: Message[], onChunk?: (chunk: string) => void) => Promise<string>, 
     useSemanticCache: boolean = true,
     similarityThreshold: number = 0.85,
     onChunk?: (chunk: string) => void
   ): Promise<MemoryResult> {
     
-    // 1. Check L1
-    if (this.l1Cache.has(prompt)) {
-      const cached = this.l1Cache.get(prompt)!;
+    // Extract the latest user prompt
+    const lastMessage = messages[messages.length - 1];
+    const prompt = lastMessage?.content || "";
+    
+    // Create a unique key for the entire conversation context
+    const contextKey = JSON.stringify(messages.map(m => ({ role: m.role, content: m.content })));
+
+    // 1. Check L1 (Exact match on full context)
+    if (this.l1Cache.has(contextKey)) {
+      const cached = this.l1Cache.get(contextKey)!;
       if (onChunk) onChunk(cached);
       return { source: 'L1 (RAM)', response: cached };
     }
     
-    // 2. Check L2
-    const l2 = this.getL2(prompt);
+    // 2. Check L2 (Exact match on full context)
+    const l2 = this.getL2(contextKey);
     if (l2) {
-      this.l1Cache.set(prompt, l2); // Promote to L1
+      this.l1Cache.set(contextKey, l2); // Promote to L1
       if (onChunk) onChunk(l2);
       return { source: 'L2 (Disk)', response: l2 };
     }
 
-    // 3. Check L3
-    if (useSemanticCache) {
+    // 3. Check L3 (Semantic match on the last prompt, ONLY if it's a single-turn conversation)
+    // Semantic caching is risky for multi-turn as context matters.
+    const isSingleTurn = messages.filter(m => m.role === 'user').length === 1;
+    if (useSemanticCache && isSingleTurn) {
       const l3 = this.getL3(prompt, similarityThreshold);
       if (l3) {
-        this.l1Cache.set(prompt, l3); // Promote
-        this.setL2(prompt, l3);
+        this.l1Cache.set(contextKey, l3); // Promote
+        this.setL2(contextKey, l3);
         if (onChunk) onChunk(l3);
         return { source: 'L3 (Semantic)', response: l3 };
       }
     }
 
     // 4. Execute L4 (Compute)
-    const response = await executeL4(prompt, onChunk);
+    const response = await executeL4(messages, onChunk);
     
     // Save to all caches
-    this.l1Cache.set(prompt, response);
-    this.setL2(prompt, response);
-    if (useSemanticCache) {
+    this.l1Cache.set(contextKey, response);
+    this.setL2(contextKey, response);
+    
+    // Only save to L3 semantic cache if it's a single-turn query
+    if (useSemanticCache && isSingleTurn) {
       // Don't await setL3 so it doesn't block returning the response
       this.setL3(prompt, response).catch(console.error);
     }

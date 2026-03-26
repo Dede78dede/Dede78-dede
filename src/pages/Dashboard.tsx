@@ -4,6 +4,18 @@ import { cn } from '../utils/cn';
 import { manifestoContent } from '../utils/manifesto';
 import { AgentService, Agent, Job } from '../services/agentService';
 import { useSettings } from '../context/SettingsContext';
+import { JobStatus, WorkflowStatus, AgentStatus } from '../types/enums';
+
+interface Workflow {
+  id: string;
+  name: string;
+  status: WorkflowStatus;
+  global_context: string;
+  created_at: string;
+  updated_at: string;
+  total_steps?: number;
+  completed_steps?: number;
+}
 
 /**
  * Dashboard page component.
@@ -14,6 +26,7 @@ export function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void 
   const { settings } = useSettings();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   /**
@@ -21,12 +34,17 @@ export function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void 
    */
   const fetchData = async () => {
     try {
-      const [agentsData, jobsData] = await Promise.all([
+      const [agentsData, jobsData, workflowsRes] = await Promise.all([
         AgentService.getAgents(),
-        AgentService.getJobs()
+        AgentService.getJobs(),
+        fetch('/api/workflows')
       ]);
+      const workflowsData = await workflowsRes.json();
       setAgents(agentsData);
       setJobs(jobsData);
+      if (workflowsData.workflows) {
+        setWorkflows(workflowsData.workflows);
+      }
     } catch (error) {
       console.error("Errore recupero dati dashboard:", error);
     } finally {
@@ -76,6 +94,13 @@ export function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void 
         </div>
         <div className="flex gap-3">
           <button
+            onClick={() => onNavigate && onNavigate('agents')}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            <Network className="w-4 h-4" />
+            Agenti & A2A
+          </button>
+          <button
             onClick={() => onNavigate && onNavigate('models')}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-zinc-950 rounded-lg text-sm font-medium transition-colors"
           >
@@ -104,18 +129,20 @@ export function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void 
         <StatCard icon={Cpu} label="CPU Usage" value="42%" trend="+5%" />
         <StatCard icon={HardDrive} label="VRAM (RTX 4090)" value="18.4 / 24 GB" trend="76%" />
         <StatCard icon={Network} label="SmarterRouter" value="Online" subtext={`${agents.length} agenti attivi`} />
-        <StatCard icon={Activity} label="Job in Coda" value={jobs.filter(j => j.status === 'PENDING').length.toString()} subtext={`${jobs.filter(j => j.status === 'RUNNING').length} in esecuzione`} />
-        <StatCard icon={GitMerge} label="Workflows" value={jobs.filter(j => j.task_type === 'WORKFLOW' && j.status === 'COMPLETED').length.toString()} subtext={`${jobs.filter(j => j.task_type === 'WORKFLOW' && j.status === 'RUNNING').length} attivi`} />
+        <StatCard icon={Activity} label="Job in Coda" value={jobs.filter(j => j.status === JobStatus.PENDING).length.toString()} subtext={`${jobs.filter(j => j.status === JobStatus.RUNNING).length} in esecuzione`} />
+        <StatCard icon={GitMerge} label="Workflows" value={jobs.filter(j => j.task_type === 'WORKFLOW' && j.status === JobStatus.COMPLETED).length.toString()} subtext={`${jobs.filter(j => j.task_type === 'WORKFLOW' && j.status === JobStatus.RUNNING).length} attivi`} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Agents Status */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
           <div className="px-6 py-4 border-b border-zinc-800 flex justify-between items-center">
             <h3 className="font-medium text-zinc-100">Agenti Specializzati</h3>
-            <span className={cn("text-xs font-medium px-2.5 py-1 rounded-full", settings.llmclEnabled ? "bg-purple-500/10 text-purple-400 border border-purple-500/20" : "bg-zinc-800 text-zinc-400")}>
-              {settings.llmclEnabled ? 'LLM-CL Protocol Active' : 'LLM-CL Disabled'}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className={cn("text-xs font-medium px-2.5 py-1 rounded-full", settings.llmclEnabled ? "bg-purple-500/10 text-purple-400 border border-purple-500/20" : "bg-zinc-800 text-zinc-400")}>
+                {settings.llmclEnabled ? 'LLM-CL Protocol Active' : 'LLM-CL Disabled'}
+              </span>
+            </div>
           </div>
           <div className="divide-y divide-zinc-800">
             {agents.length === 0 && !isLoading && (
@@ -124,9 +151,9 @@ export function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void 
             {agents.map((agent) => (
               <div key={agent.id} className="p-6 flex items-center gap-6">
                 <div className="flex-shrink-0">
-                  {agent.status === 'BUSY' && <Clock className="w-6 h-6 text-emerald-500 animate-pulse" />}
-                  {agent.status === 'IDLE' && <CheckCircle2 className="w-6 h-6 text-zinc-500" />}
-                  {agent.status === 'OFFLINE' && <AlertCircle className="w-6 h-6 text-red-500" />}
+                  {agent.status === AgentStatus.BUSY && <Clock className="w-6 h-6 text-emerald-500 animate-pulse" />}
+                  {agent.status === AgentStatus.IDLE && <CheckCircle2 className="w-6 h-6 text-zinc-500" />}
+                  {agent.status === AgentStatus.OFFLINE && <AlertCircle className="w-6 h-6 text-red-500" />}
                 </div>
                 <div className="flex-1">
                   <div className="flex justify-between items-start mb-2">
@@ -136,8 +163,8 @@ export function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void 
                     </div>
                     <span className={cn(
                       "text-xs font-medium px-2 py-1 rounded-md",
-                      agent.status === 'BUSY' ? 'bg-emerald-500/10 text-emerald-400' :
-                      agent.status === 'OFFLINE' ? 'bg-red-500/10 text-red-400' :
+                      agent.status === AgentStatus.BUSY ? 'bg-emerald-500/10 text-emerald-400' :
+                      agent.status === AgentStatus.OFFLINE ? 'bg-red-500/10 text-red-400' :
                       'bg-zinc-800 text-zinc-400'
                     )}>
                       {agent.status}
@@ -153,6 +180,12 @@ export function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void 
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
           <div className="px-6 py-4 border-b border-zinc-800 flex justify-between items-center">
             <h3 className="font-medium text-zinc-100">Code di Lavoro (Jobs)</h3>
+            <button 
+              onClick={() => onNavigate && onNavigate('monitoring')}
+              className="text-xs text-indigo-400 hover:text-indigo-300 font-medium"
+            >
+              Vedi tutti
+            </button>
           </div>
           <div className="divide-y divide-zinc-800 max-h-[500px] overflow-y-auto">
             {jobs.length === 0 && !isLoading && (
@@ -161,10 +194,10 @@ export function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void 
             {jobs.map((job) => (
               <div key={job.id} className="p-6 flex items-center gap-6">
                 <div className="flex-shrink-0">
-                  {job.status === 'RUNNING' && <Clock className="w-6 h-6 text-emerald-500 animate-pulse" />}
-                  {job.status === 'PENDING' && <Activity className="w-6 h-6 text-zinc-500" />}
-                  {job.status === 'COMPLETED' && <CheckCircle2 className="w-6 h-6 text-indigo-500" />}
-                  {job.status === 'FAILED' && <AlertCircle className="w-6 h-6 text-red-500" />}
+                  {job.status === JobStatus.RUNNING && <Clock className="w-6 h-6 text-emerald-500 animate-pulse" />}
+                  {(job.status === JobStatus.PENDING || job.status === JobStatus.WAITING_FRONTEND || job.status === JobStatus.PENDING_FRONTEND) && <Activity className="w-6 h-6 text-zinc-500" />}
+                  {job.status === JobStatus.COMPLETED && <CheckCircle2 className="w-6 h-6 text-indigo-500" />}
+                  {job.status === JobStatus.FAILED && <AlertCircle className="w-6 h-6 text-red-500" />}
                 </div>
                 <div className="flex-1">
                   <div className="flex justify-between items-start mb-2">
@@ -174,20 +207,80 @@ export function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void 
                     </div>
                     <span className={cn(
                       "text-xs font-medium px-2 py-1 rounded-md",
-                      job.status === 'RUNNING' ? 'bg-emerald-500/10 text-emerald-400' :
-                      job.status === 'COMPLETED' ? 'bg-indigo-500/10 text-indigo-400' :
-                      job.status === 'FAILED' ? 'bg-red-500/10 text-red-400' :
+                      job.status === JobStatus.RUNNING ? 'bg-emerald-500/10 text-emerald-400' :
+                      job.status === JobStatus.COMPLETED ? 'bg-indigo-500/10 text-indigo-400' :
+                      job.status === JobStatus.FAILED ? 'bg-red-500/10 text-red-400' :
+                      job.status === JobStatus.WAITING_FRONTEND || job.status === JobStatus.PENDING_FRONTEND ? 'bg-blue-500/10 text-blue-400' :
                       'bg-zinc-800 text-zinc-400'
                     )}>
                       {job.status}
                     </span>
                   </div>
-                  {(job.status === 'RUNNING' || job.status === 'COMPLETED') && (
+                  {(job.status === JobStatus.RUNNING || job.status === JobStatus.COMPLETED || job.status === JobStatus.WAITING_FRONTEND || job.status === JobStatus.PENDING_FRONTEND) && (
                     <div className="w-full bg-zinc-800 rounded-full h-1.5 mt-3">
                       <div 
-                        className={cn("h-1.5 rounded-full transition-all duration-500", job.status === 'COMPLETED' ? 'bg-indigo-500' : 'bg-emerald-500')}
+                        className={cn("h-1.5 rounded-full transition-all duration-500", job.status === JobStatus.COMPLETED ? 'bg-indigo-500' : 'bg-emerald-500')}
                         style={{ width: `${job.progress}%` }}
                       ></div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Workflows List */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-zinc-800 flex justify-between items-center">
+            <h3 className="font-medium text-zinc-100">Workflows</h3>
+            <button 
+              onClick={() => onNavigate && onNavigate('workflows')}
+              className="text-xs text-indigo-400 hover:text-indigo-300 font-medium"
+            >
+              Vedi tutti
+            </button>
+          </div>
+          <div className="divide-y divide-zinc-800 max-h-[500px] overflow-y-auto">
+            {workflows.length === 0 && !isLoading && (
+              <div className="p-6 text-center text-zinc-500 text-sm">Nessun workflow attivo.</div>
+            )}
+            {workflows.map((workflow) => (
+              <div key={workflow.id} className="p-6 flex items-center gap-6">
+                <div className="flex-shrink-0">
+                  {workflow.status === WorkflowStatus.RUNNING && <Clock className="w-6 h-6 text-emerald-500 animate-pulse" />}
+                  {workflow.status === WorkflowStatus.PENDING && <Activity className="w-6 h-6 text-zinc-500" />}
+                  {workflow.status === WorkflowStatus.COMPLETED && <CheckCircle2 className="w-6 h-6 text-indigo-500" />}
+                  {workflow.status === WorkflowStatus.FAILED && <AlertCircle className="w-6 h-6 text-red-500" />}
+                </div>
+                <div className="flex-1">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <h4 className="font-medium text-zinc-200">{workflow.name}</h4>
+                      <p className="text-xs text-zinc-500 font-mono mt-1">{workflow.id}</p>
+                    </div>
+                    <span className={cn(
+                      "text-xs font-medium px-2 py-1 rounded-md",
+                      workflow.status === WorkflowStatus.RUNNING ? 'bg-emerald-500/10 text-emerald-400' :
+                      workflow.status === WorkflowStatus.COMPLETED ? 'bg-indigo-500/10 text-indigo-400' :
+                      workflow.status === WorkflowStatus.FAILED ? 'bg-red-500/10 text-red-400' :
+                      'bg-zinc-800 text-zinc-400'
+                    )}>
+                      {workflow.status}
+                    </span>
+                  </div>
+                  {workflow.total_steps !== undefined && workflow.total_steps > 0 && (
+                    <div className="w-full mt-3">
+                      <div className="flex justify-between text-xs text-zinc-500 mb-1">
+                        <span>Progresso ({workflow.completed_steps}/{workflow.total_steps})</span>
+                        <span>{Math.round((workflow.completed_steps! / workflow.total_steps) * 100)}%</span>
+                      </div>
+                      <div className="w-full bg-zinc-800 rounded-full h-1.5">
+                        <div 
+                          className={cn("h-1.5 rounded-full transition-all duration-500", workflow.status === WorkflowStatus.COMPLETED ? 'bg-indigo-500' : workflow.status === WorkflowStatus.FAILED ? 'bg-red-500' : 'bg-emerald-500')}
+                          style={{ width: `${(workflow.completed_steps! / workflow.total_steps) * 100}%` }}
+                        ></div>
+                      </div>
                     </div>
                   )}
                 </div>

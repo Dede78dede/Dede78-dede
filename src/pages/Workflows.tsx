@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, GitMerge, CheckCircle, XCircle, Clock, ArrowLeft, Trash2, Save, Activity } from 'lucide-react';
 import { cn } from '../utils/cn';
+import { WorkflowStatus, WorkflowStepStatus } from '../types/enums';
 
 interface Workflow {
   id: string;
   name: string;
-  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  status: WorkflowStatus;
   global_context: string;
   created_at: string;
   updated_at: string;
@@ -18,7 +19,7 @@ interface WorkflowStep {
   name: string;
   model_config: string;
   input_prompt_template: string;
-  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  status: WorkflowStepStatus;
   output_result: string | null;
   retry_count: number;
   created_at: string;
@@ -161,9 +162,9 @@ export function Workflows() {
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'COMPLETED': return <CheckCircle className="w-5 h-5 text-emerald-500" />;
-      case 'FAILED': return <XCircle className="w-5 h-5 text-red-500" />;
-      case 'RUNNING': return <Activity className="w-5 h-5 text-blue-500 animate-pulse" />;
+      case WorkflowStatus.COMPLETED: return <CheckCircle className="w-5 h-5 text-emerald-500" />;
+      case WorkflowStatus.FAILED: return <XCircle className="w-5 h-5 text-red-500" />;
+      case WorkflowStatus.RUNNING: return <Activity className="w-5 h-5 text-blue-500 animate-pulse" />;
       default: return <Clock className="w-5 h-5 text-zinc-500" />;
     }
   };
@@ -441,9 +442,9 @@ export function Workflows() {
                   <span className="text-zinc-500">Status</span>
                   <span className={cn(
                     "font-medium",
-                    workflow.status === 'COMPLETED' ? "text-emerald-400" :
-                    workflow.status === 'FAILED' ? "text-red-400" :
-                    workflow.status === 'RUNNING' ? "text-blue-400" : "text-zinc-400"
+                    workflow.status === WorkflowStatus.COMPLETED ? "text-emerald-400" :
+                    workflow.status === WorkflowStatus.FAILED ? "text-red-400" :
+                    workflow.status === WorkflowStatus.RUNNING ? "text-blue-400" : "text-zinc-400"
                   )}>
                     {workflow.status}
                   </span>

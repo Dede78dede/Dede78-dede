@@ -93,7 +93,7 @@ async function handleAnthropicStream(response: Response, onChunk: (chunk: string
  * @param onChunk Optional callback for streaming chunks.
  * @returns The generated text.
  */
-export async function generateWithOpenAI(prompt: string, apiKey: string, onChunk?: (chunk: string) => void, systemPrompt?: string): Promise<string> {
+export async function generateWithOpenAI(prompt: string | any[], apiKey: string, onChunk?: (chunk: string) => void, systemPrompt?: string): Promise<string> {
   if (!apiKey) throw new Error("OpenAI API Key mancante nelle impostazioni.");
   
   const response = await fetch("/api/llm/generate", {
@@ -123,7 +123,7 @@ export async function generateWithOpenAI(prompt: string, apiKey: string, onChunk
   }
 }
 
-export async function generateWithAnthropic(prompt: string, apiKey: string, onChunk?: (chunk: string) => void, systemPrompt?: string): Promise<string> {
+export async function generateWithAnthropic(prompt: string | any[], apiKey: string, onChunk?: (chunk: string) => void, systemPrompt?: string): Promise<string> {
   if (!apiKey) throw new Error("Anthropic API Key mancante nelle impostazioni.");
   
   const response = await fetch("/api/llm/generate", {
@@ -153,7 +153,7 @@ export async function generateWithAnthropic(prompt: string, apiKey: string, onCh
   }
 }
 
-export async function generateWithGroq(prompt: string, apiKey: string, onChunk?: (chunk: string) => void, systemPrompt?: string): Promise<string> {
+export async function generateWithGroq(prompt: string | any[], apiKey: string, onChunk?: (chunk: string) => void, systemPrompt?: string): Promise<string> {
   if (!apiKey) throw new Error("Groq API Key mancante nelle impostazioni.");
   
   const response = await fetch("/api/llm/generate", {
@@ -183,7 +183,7 @@ export async function generateWithGroq(prompt: string, apiKey: string, onChunk?:
   }
 }
 
-export async function generateWithDeepSeek(prompt: string, apiKey: string, onChunk?: (chunk: string) => void, systemPrompt?: string): Promise<string> {
+export async function generateWithDeepSeek(prompt: string | any[], apiKey: string, onChunk?: (chunk: string) => void, systemPrompt?: string): Promise<string> {
   if (!apiKey) throw new Error("DeepSeek API Key mancante nelle impostazioni.");
   
   const response = await fetch("/api/llm/generate", {

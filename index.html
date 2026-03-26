@@ -55,6 +55,20 @@
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      setTimeout(() => {
+        fetch('/api/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            html: document.getElementById('root').innerHTML,
+            error: window.lastError ? window.lastError.message : null
+          })
+        });
+      }, 5000);
+      window.addEventListener('error', (e) => window.lastError = e.error);
+      window.addEventListener('unhandledrejection', (e) => window.lastError = e.reason);
+    </script>
   </body>
 </html>
 

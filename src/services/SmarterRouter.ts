@@ -134,7 +134,7 @@ export class SmarterRouter {
   /**
    * Invia il prompt al MasterOrchestrator (MaAS) per l'analisi e l'azione.
    */
-  static async orchestrate(prompt: string, systemPrompt?: string, policy?: RoutingPolicy): Promise<{ action: string, message: string, jobId?: string, reasoningDomain?: string }> {
+  static async orchestrate(prompt: string, systemPrompt?: string, policy?: RoutingPolicy): Promise<{ action: string, message: string, jobId?: string, reasoningDomain?: string, jobDetails?: any }> {
     // 1. Evaluate Policy before sending data to cloud
     if (policy) {
       try {
@@ -167,8 +167,11 @@ Scegli una delle seguenti azioni:
 - REASONING_TASK: Per problemi complessi, logica, matematica, o quando l'utente chiede esplicitamente di ragionare, pensare passo dopo passo o mostrare il processo.
 - LOCAL_DELEGATION: Per domande molto semplici, saluti, o richieste banali che un piccolo modello locale può gestire.
 - AGENT_JOB: Per richieste di addestramento (training/fine-tuning), valutazione (evaluation/benchmarking), o unione (merging) di modelli.
+- WEB_SEARCH: Per domande su eventi recenti, notizie, fatti in tempo reale o informazioni che richiedono una ricerca sul web per essere accurate.
+- FULL_CYCLE_RESOLUTION: Per richieste che implicano la diagnosi di un problema, la generazione di una patch e la verifica di sicurezza (es. "Risolvi questo bug", "Analizza e correggi questo errore").
 
-Se scegli AGENT_JOB, devi anche estrarre i parametri per il job (es. task_type: 'TRAINING', dataset: '...', epochs: ...).`;
+Se scegli AGENT_JOB, devi anche estrarre i parametri per il job (es. task_type: 'TRAINING', dataset: '...', epochs: ...).
+Se scegli FULL_CYCLE_RESOLUTION, estrai il payload (codice o log) e il contesto.`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
@@ -181,7 +184,7 @@ Se scegli AGENT_JOB, devi anche estrarre i parametri per il job (es. task_type: 
             properties: {
               action: {
                 type: Type.STRING,
-                enum: ["DIRECT_ANSWER", "REASONING_TASK", "LOCAL_DELEGATION", "AGENT_JOB"],
+                enum: ["DIRECT_ANSWER", "REASONING_TASK", "LOCAL_DELEGATION", "AGENT_JOB", "WEB_SEARCH", "FULL_CYCLE_RESOLUTION"],
                 description: "L'azione da intraprendere."
               },
               reasoningDomain: {
@@ -191,10 +194,11 @@ Se scegli AGENT_JOB, devi anche estrarre i parametri per il job (es. task_type: 
               },
               jobDetails: {
                 type: Type.OBJECT,
-                description: "Dettagli del job (solo se action è AGENT_JOB).",
+                description: "Dettagli del job (solo se action è AGENT_JOB o FULL_CYCLE_RESOLUTION).",
                 properties: {
-                  task_type: { type: Type.STRING, description: "TRAINING, EVALUATION, o MERGING" },
-                  payload: { type: Type.OBJECT, description: "Parametri estratti dalla richiesta" }
+                  task_type: { type: Type.STRING, description: "TRAINING, EVALUATION, MERGING, o FULL_CYCLE_RESOLUTION" },
+                  payload: { type: Type.OBJECT, description: "Parametri estratti dalla richiesta" },
+                  context: { type: Type.STRING, description: "Contesto per FULL_CYCLE_RESOLUTION" }
                 }
               },
               directResponse: {
@@ -212,7 +216,13 @@ Se scegli AGENT_JOB, devi anche estrarre i parametri per il job (es. task_type: 
       
       const result = JSON.parse(resultText);
 
-      if (result.action === "AGENT_JOB" && result.jobDetails) {
+      if (result.action === "FULL_CYCLE_RESOLUTION") {
+        return {
+          action: "FULL_CYCLE_RESOLUTION",
+          message: "Avvio risoluzione autonoma completa (A2A)...",
+          jobDetails: result.jobDetails
+        };
+      } else if (result.action === "AGENT_JOB" && result.jobDetails) {
         // Create a job in the database via API
         const jobRes = await fetch("/api/jobs/create", {
           method: "POST",
@@ -241,6 +251,11 @@ Se scegli AGENT_JOB, devi anche estrarre i parametri per il job (es. task_type: 
           action: "REASONING_TASK",
           reasoningDomain: result.reasoningDomain || "GENERAL",
           message: `Richiesto ragionamento complesso (${result.reasoningDomain || "GENERAL"}). Attivazione esperto CoT...`
+        };
+      } else if (result.action === "WEB_SEARCH") {
+        return {
+          action: "WEB_SEARCH",
+          message: "Ricerca web necessaria per informazioni aggiornate. Attivazione Grounding..."
         };
       } else {
         // DIRECT_ANSWER

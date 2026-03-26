@@ -1,17 +1,33 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { ChevronDown, ChevronRight, Brain } from 'lucide-react';
+import { ChevronDown, ChevronRight, Brain, Paperclip } from 'lucide-react';
+import { MessageAttachment } from '../context/ChatContext';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant' | 'system';
   content: string;
+  attachments?: MessageAttachment[];
 }
 
-export function ChatMessageContent({ role, content }: ChatMessageProps) {
+export function ChatMessageContent({ role, content, attachments }: ChatMessageProps) {
   const [isThoughtExpanded, setIsThoughtExpanded] = useState(false);
 
   if (role === 'user') {
-    return <>{content}</>;
+    return (
+      <div className="flex flex-col gap-2">
+        {content}
+        {attachments && attachments.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-2">
+            {attachments.map((att, i) => (
+              <div key={i} className="flex items-center gap-2 bg-zinc-700/50 border border-zinc-600 rounded-lg px-3 py-1.5 text-sm">
+                <Paperclip className="w-3.5 h-3.5 text-zinc-300" />
+                <span className="text-zinc-200 truncate max-w-[200px]">{att.name || 'Allegato'}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   }
 
   // Parse routing messages

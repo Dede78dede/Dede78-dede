@@ -1,4 +1,4 @@
-import { pipeline, env } from '@xenova/transformers';
+import { pipeline, env } from '@huggingface/transformers';
 
 // Disable local models to force downloading from Hugging Face Hub
 env.allowLocalModels = false;
@@ -57,7 +57,9 @@ export class MicroRouter {
       try {
         // console.log('[MicroRouter] Initializing local embedding model...');
         // Use a very small, fast embedding model suitable for browser execution
-        this.extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+        this.extractor = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2', {
+          dtype: 'q8'
+        });
         
         // console.log('[MicroRouter] Computing intent embeddings...');
         for (const intent of this.localIntents) {

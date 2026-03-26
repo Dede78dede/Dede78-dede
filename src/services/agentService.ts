@@ -1,8 +1,10 @@
+import { AgentStatus, JobStatus } from '../types/enums';
+
 export interface Agent {
   id: string;
   name: string;
   type: string;
-  status: 'IDLE' | 'BUSY' | 'OFFLINE';
+  status: AgentStatus;
   created_at: string;
 }
 
@@ -10,7 +12,7 @@ export interface Job {
   id: string;
   agent_id: string | null;
   task_type: string;
-  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+  status: JobStatus;
   progress: number;
   logs: string;
   created_at: string;
