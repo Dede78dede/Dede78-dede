@@ -4,7 +4,8 @@ import { cn } from '../utils/cn';
 import { manifestoContent } from '../utils/manifesto';
 import { AgentService, Agent, Job } from '../services/agentService';
 import { useSettings } from '../context/SettingsContext';
-import { JobStatus, WorkflowStatus, AgentStatus } from '../types/enums';
+import { AgentStatus, JobStatus, WorkflowStatus } from '../types/enums';
+import { authenticatedFetch } from '../utils/api';
 
 interface Workflow {
   id: string;
@@ -37,7 +38,7 @@ export function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void 
       const [agentsData, jobsData, workflowsRes] = await Promise.all([
         AgentService.getAgents(),
         AgentService.getJobs(),
-        fetch('/api/workflows')
+        authenticatedFetch('/api/workflows')
       ]);
       const workflowsData = await workflowsRes.json();
       setAgents(agentsData);

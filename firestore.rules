@@ -127,8 +127,9 @@ service cloud.firestore {
     // Check if user is an admin
     function isAdmin() {
       return isAuthenticated() &&
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "dede78.dede@gmail.com" && request.auth.token.email_verified == true));
+        (request.auth.token.role == 'admin' ||
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+         (request.auth.token.email == "dede78.dede@gmail.com" && request.auth.token.email_verified == true));
     }
 
     // ===============================================================

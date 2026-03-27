@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Bot, Shield, GitMerge, AlertTriangle, CheckCircle, Loader2, Code2 } from 'lucide-react';
 import { cn } from '../utils/cn';
+import { authenticatedFetch } from '../utils/api';
 
 export function Agents() {
   const [activeTab, setActiveTab] = useState<'antigravity' | 'a2a' | 'jules' | 'adk'>('antigravity');
@@ -50,7 +51,7 @@ export function Agents() {
         }
       }
 
-      const res = await fetch('/api/agents/antigravity/scan', {
+      const res = await authenticatedFetch('/api/agents/antigravity/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ payloadType: currentPayloadType, payloadContent })
@@ -77,7 +78,7 @@ export function Agents() {
         // If not JSON, send as string
       }
 
-      const res = await fetch('/api/a2a/simulate', {
+      const res = await authenticatedFetch('/api/a2a/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -103,7 +104,7 @@ export function Agents() {
     setIsJulesAnalyzing(true);
     setJulesResult(null);
     try {
-      const res = await fetch('/api/agents/jules/analyze', {
+      const res = await authenticatedFetch('/api/agents/jules/analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -127,7 +128,7 @@ export function Agents() {
     setIsIndexing(true);
     setIndexStatus('Avvio indicizzazione...');
     try {
-      const res = await fetch('/api/rag/index', {
+      const res = await authenticatedFetch('/api/rag/index', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ vaultPath: adkVaultPath })
@@ -139,7 +140,7 @@ export function Agents() {
       
       // Poll status
       const poll = setInterval(async () => {
-        const statusRes = await fetch('/api/rag/status');
+        const statusRes = await authenticatedFetch('/api/rag/status');
         const statusData = await statusRes.json();
         if (!statusData.isIndexing) {
           clearInterval(poll);
@@ -164,7 +165,7 @@ export function Agents() {
     try {
       let context = '';
       if (adkVaultPath) {
-        const ragRes = await fetch('/api/rag/query', {
+        const ragRes = await authenticatedFetch('/api/rag/query', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ vaultPath: adkVaultPath, query: adkQuery, topK: 3 })

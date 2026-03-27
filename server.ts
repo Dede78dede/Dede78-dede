@@ -7,6 +7,15 @@ import db from "./src/db/database"; // Initialize SQLite DB
 import { jobScheduler } from "./src/services/JobScheduler";
 import { workflowEngine } from "./src/services/WorkflowEngine";
 import { GoogleGenAI, Type } from "@google/genai";
+import * as admin from 'firebase-admin';
+import firebaseConfig from './firebase-applet-config.json';
+
+// Initialize Firebase Admin
+if (!admin.apps.length) {
+  admin.initializeApp({
+    projectId: firebaseConfig.projectId,
+  });
+}
 
 const getSafeVaultPath = (vaultPath: string) => {
   const dataDir = path.resolve(process.cwd(), 'data');
@@ -31,6 +40,12 @@ async function startServer() {
   // Middleware to parse JSON bodies
   app.use(express.json());
 
+  // Global Error Handler Middleware
+  const errorHandler = (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error('[Global Error]', err.stack);
+    res.status(500).json({ error: err.message || 'Internal Server Error' });
+  };
+
   app.post("/api/log", (req, res) => {
     fs.writeFileSync('browser_log.txt', JSON.stringify(req.body, null, 2));
     res.json({ status: "ok" });
@@ -40,6 +55,36 @@ async function startServer() {
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", message: "SmarterRouter API Gateway is running" });
   });
+
+  // JWT Authentication Middleware
+  const authenticateJWT = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const idToken = authHeader.split('Bearer ')[1];
+      try {
+        const { getAuth } = await import('firebase-admin/auth');
+        const decodedToken = await getAuth().verifyIdToken(idToken);
+        (req as any).user = decodedToken;
+        next();
+      } catch (error) {
+        res.status(401).json({ error: 'Unauthorized: Invalid token' });
+      }
+    } else {
+      res.status(401).json({ error: 'Unauthorized: No token provided' });
+    }
+  };
+
+  // Apply authentication to protected routes
+  app.use('/v1', authenticateJWT);
+  app.use('/api/rag', authenticateJWT);
+  app.use('/api/obsidian', authenticateJWT);
+  app.use('/api/cache', authenticateJWT);
+  app.use('/api/workflows', authenticateJWT);
+  app.use('/api/agents', authenticateJWT);
+  app.use('/api/a2a', authenticateJWT);
+  app.use('/api/llm', authenticateJWT);
+  app.use('/api/jobs', authenticateJWT);
+  app.use('/api/worker', authenticateJWT);
 
   // --- MASTER ORCHESTRATOR (MaAS) ---
   // The orchestrator logic has been moved to the frontend (SmarterRouter.ts)
@@ -657,6 +702,9 @@ async function startServer() {
       res.status(500).json({ error: error.message });
     }
   });
+
+  // Global Error Handler
+  app.use(errorHandler);
 
   // Vite middleware for development
   let vite: any;

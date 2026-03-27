@@ -14,6 +14,7 @@ import { useChat, Message, MessageAttachment } from '../context/ChatContext';
 import { SmarterRouter } from '../services/SmarterRouter';
 import { microRouter } from '../services/MicroRouter';
 import { preflightResults } from '../preflight';
+import { authenticatedFetch } from '../utils/api';
 
 /**
  * Inference page component.
@@ -273,7 +274,7 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
             payloadType = 'IAC_AUDIT';
           }
 
-          const res = await fetch('/api/agents/antigravity/scan', {
+          const res = await authenticatedFetch('/api/agents/antigravity/scan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ payloadType, content: input })
@@ -314,7 +315,7 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
       if (settings.useLocalRag && settings.obsidianVaultPath) {
         try {
           const ragStart = Date.now();
-          const res = await fetch('/api/rag/query', {
+          const res = await authenticatedFetch('/api/rag/query', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ vaultPath: settings.obsidianVaultPath, query: input, topK: 3 })
@@ -508,7 +509,7 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
               const a2aStart = Date.now();
               
               try {
-                const res = await fetch('/api/a2a/simulate', {
+                const res = await authenticatedFetch('/api/a2a/simulate', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({
@@ -569,7 +570,7 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
             } else if (result.action === 'AGENT_JOB') {
               if (onChunkCb) onChunkCb(`🤖 *Master: Avvio job asincrono per task complesso...*\n\n`);
               // Create a job via API
-              const res = await fetch('/api/jobs/create', {
+              const res = await authenticatedFetch('/api/jobs/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -725,7 +726,7 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
             if (settings.useJulesImpactAnalysis) {
               try {
                 const julesStart = Date.now();
-                const res = await fetch('/api/agents/jules/analyze', {
+                const res = await authenticatedFetch('/api/agents/jules/analyze', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({

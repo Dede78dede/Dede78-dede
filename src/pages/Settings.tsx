@@ -3,6 +3,7 @@ import { Save, Server, Database, Shield, CheckCircle2, RefreshCw, AlertCircle, C
 import { useSettings, Macro, Profile } from '../context/SettingsContext';
 import { useBackup } from '../context/BackupContext';
 import { SyncStatus } from '../core/enums';
+import { authenticatedFetch } from '../utils/api';
 
 const WEBLLM_MODELS = [
   { id: 'Llama-3.2-1B-Instruct-q4f16_1-MLC', name: 'Llama 3.2 1B (q4)' },
@@ -76,7 +77,7 @@ export function Settings() {
     if (localSettings.useLocalRag) {
       const checkStatus = async () => {
         try {
-          const res = await fetch('/api/rag/status');
+          const res = await authenticatedFetch('/api/rag/status');
           if (res.ok) {
             setRagStatus(await res.json());
           }
@@ -347,7 +348,7 @@ export function Settings() {
                     onClick={async () => {
                       try {
                         showNotification('Avvio indicizzazione...', 'success');
-                        const res = await fetch('/api/rag/index', {
+                        const res = await authenticatedFetch('/api/rag/index', {
                           method: 'POST',
                           headers: { 'Content-Type': 'application/json' },
                           body: JSON.stringify({ vaultPath: localSettings.obsidianVaultPath })

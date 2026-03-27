@@ -1,5 +1,6 @@
 import { pipeline, FeatureExtractionPipeline } from '@huggingface/transformers';
 import { PolicyEngine, RoutingPolicy } from './PolicyEngine';
+import { authenticatedFetch } from '../utils/api';
 
 /**
  * SmarterRouter is responsible for intelligently routing prompts to either
@@ -224,7 +225,7 @@ Se scegli FULL_CYCLE_RESOLUTION, estrai il payload (codice o log) e il contesto.
         };
       } else if (result.action === "AGENT_JOB" && result.jobDetails) {
         // Create a job in the database via API
-        const jobRes = await fetch("/api/jobs/create", {
+        const jobRes = await authenticatedFetch("/api/jobs/create", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

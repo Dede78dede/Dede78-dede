@@ -1,4 +1,5 @@
 import { AgentStatus, JobStatus } from '../types/enums';
+import { authenticatedFetch } from '../utils/api';
 
 export interface Agent {
   id: string;
@@ -28,7 +29,7 @@ export class AgentService {
    * Recupera la lista degli agenti Python registrati nel sistema.
    */
   static async getAgents(): Promise<Agent[]> {
-    const response = await fetch("/api/agents");
+    const response = await authenticatedFetch("/api/agents");
     if (!response.ok) throw new Error("Errore nel recupero degli agenti");
     const data = await response.json();
     return data.agents;
@@ -39,7 +40,7 @@ export class AgentService {
    * che verrà prelevato da un worker Python.
    */
   static async createJob(taskType: string, payload: any): Promise<string> {
-    const response = await fetch("/api/jobs/create", {
+    const response = await authenticatedFetch("/api/jobs/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ task_type: taskType, payload })
@@ -59,7 +60,7 @@ export class AgentService {
    * Utile per il polling dalla UI (Dashboard).
    */
   static async getJobStatus(jobId: string): Promise<Job> {
-    const response = await fetch(`/api/jobs/${jobId}`);
+    const response = await authenticatedFetch(`/api/jobs/${jobId}`);
     if (!response.ok) throw new Error("Errore nel recupero dello stato del job");
     const data = await response.json();
     return data.job;
@@ -69,7 +70,7 @@ export class AgentService {
    * Recupera gli ultimi job.
    */
   static async getJobs(): Promise<Job[]> {
-    const response = await fetch("/api/jobs");
+    const response = await authenticatedFetch("/api/jobs");
     if (!response.ok) throw new Error("Errore nel recupero dei job");
     const data = await response.json();
     return data.jobs;

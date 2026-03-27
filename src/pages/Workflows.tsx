@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, GitMerge, CheckCircle, XCircle, Clock, ArrowLeft, Trash2, Save, Activity } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { WorkflowStatus, WorkflowStepStatus } from '../types/enums';
+import { authenticatedFetch } from '../utils/api';
 
 interface Workflow {
   id: string;
@@ -61,7 +62,7 @@ export function Workflows() {
 
   const fetchWorkflows = async () => {
     try {
-      const res = await fetch('/api/workflows');
+      const res = await authenticatedFetch('/api/workflows');
       const data = await res.json();
       if (data.workflows) {
         setWorkflows(data.workflows);
@@ -75,7 +76,7 @@ export function Workflows() {
 
   const fetchWorkflowSteps = async (id: string) => {
     try {
-      const res = await fetch(`/api/workflows/${id}/steps`);
+      const res = await authenticatedFetch(`/api/workflows/${id}/steps`);
       const data = await res.json();
       if (data.steps) {
         setWorkflowSteps(data.steps);
@@ -110,7 +111,7 @@ export function Workflows() {
         }))
       };
 
-      const res = await fetch('/api/workflows/create', {
+      const res = await authenticatedFetch('/api/workflows/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)

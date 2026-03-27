@@ -1,4 +1,5 @@
 import { VaultFirewall } from './VaultFirewall';
+import { authenticatedFetch } from '../utils/api';
 
 /**
  * Service to interact with a local Obsidian Vault via a backend MCP (Model Context Protocol) server.
@@ -29,7 +30,7 @@ export class ObsidianMCPService {
     if (!this.vaultPath) throw new Error("Obsidian Vault Path non configurato.");
     if (!this.firewall.validateRead(filePath)) throw new Error("Accesso in lettura bloccato dal Vault Firewall (Path Traversal).");
     
-    const response = await fetch("/api/obsidian/read", {
+    const response = await authenticatedFetch("/api/obsidian/read", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ vaultPath: this.vaultPath, filePath })
@@ -54,7 +55,7 @@ export class ObsidianMCPService {
     if (!this.vaultPath) throw new Error("Obsidian Vault Path non configurato.");
     if (!this.firewall.validateWrite(filePath)) throw new Error("Accesso in scrittura bloccato dal Vault Firewall (Percorso non consentito o Path Traversal).");
     
-    const response = await fetch("/api/obsidian/write", {
+    const response = await authenticatedFetch("/api/obsidian/write", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ vaultPath: this.vaultPath, filePath, content })
@@ -77,7 +78,7 @@ export class ObsidianMCPService {
     if (!this.vaultPath) throw new Error("Obsidian Vault Path non configurato.");
     if (!this.firewall.validateList(directory)) throw new Error("Accesso alla directory bloccato dal Vault Firewall (Path Traversal).");
     
-    const response = await fetch("/api/obsidian/list", {
+    const response = await authenticatedFetch("/api/obsidian/list", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ vaultPath: this.vaultPath, directory })

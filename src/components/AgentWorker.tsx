@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { generateWithGemini } from '../services/geminiService';
+import { authenticatedFetch } from '../utils/api';
 
 export const AgentWorker: React.FC = () => {
   const [isWorking, setIsWorking] = useState(false);
@@ -14,7 +15,7 @@ export const AgentWorker: React.FC = () => {
       setIsWorking(true);
       
       // 1. Check for pending jobs
-      const jobRes = await fetch('/api/worker/jobs');
+      const jobRes = await authenticatedFetch('/api/worker/jobs');
       const jobData = await jobRes.json();
       
       if (jobData.job) {
@@ -27,7 +28,7 @@ export const AgentWorker: React.FC = () => {
       }
 
       // 2. Check for pending workflow steps
-      const stepRes = await fetch('/api/worker/workflow-steps');
+      const stepRes = await authenticatedFetch('/api/worker/workflow-steps');
       const stepData = await stepRes.json();
       
       if (stepData.step) {
@@ -113,7 +114,7 @@ export const AgentWorker: React.FC = () => {
         true // enableWebSearch
       );
 
-      await fetch(`/api/worker/jobs/${job.id}/complete`, {
+      await authenticatedFetch(`/api/worker/jobs/${job.id}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -124,7 +125,7 @@ export const AgentWorker: React.FC = () => {
       });
     } catch (error: any) {
       console.error('[AgentWorker] Job failed:', error);
-      await fetch(`/api/worker/jobs/${job.id}/complete`, {
+      await authenticatedFetch(`/api/worker/jobs/${job.id}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -160,7 +161,7 @@ export const AgentWorker: React.FC = () => {
       // Update context
       context[step.name] = response;
 
-      await fetch(`/api/worker/workflow-steps/${step.id}/complete`, {
+      await authenticatedFetch(`/api/worker/workflow-steps/${step.id}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -171,7 +172,7 @@ export const AgentWorker: React.FC = () => {
       });
     } catch (error: any) {
       console.error('[AgentWorker] Workflow step failed:', error);
-      await fetch(`/api/worker/workflow-steps/${step.id}/complete`, {
+      await authenticatedFetch(`/api/worker/workflow-steps/${step.id}/complete`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
