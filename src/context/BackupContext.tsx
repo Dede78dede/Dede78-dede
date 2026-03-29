@@ -70,6 +70,18 @@ export function BackupProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Auto-connect to Google Drive if credentials exist
+  useEffect(() => {
+    if (settings.googleDriveClientId && settings.googleDriveApiKey && !isGoogleDriveConnected && syncStatus === SyncStatus.IDLE) {
+      connectGoogleDrive({
+        clientId: settings.googleDriveClientId,
+        apiKey: settings.googleDriveApiKey,
+        scopes: 'https://www.googleapis.com/auth/drive.appdata',
+        discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
+      });
+    }
+  }, [settings.googleDriveClientId, settings.googleDriveApiKey, isGoogleDriveConnected, syncStatus, connectGoogleDrive]);
+
   const disconnectGoogleDrive = useCallback(() => {
     if (syncEngine) {
       syncEngine.stopAutoSync();

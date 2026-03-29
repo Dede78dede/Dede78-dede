@@ -175,6 +175,36 @@ export class MemorySystem {
   }
 
   /**
+   * Manually store a value in the cache hierarchy.
+   */
+  public async remember(key: string, value: string): Promise<void> {
+    this.l1Cache.set(key, value);
+    this.setL2(key, value);
+    await this.setL3(key, value);
+  }
+
+  /**
+   * Manually retrieve a value from the cache hierarchy.
+   */
+  public async recall(key: string): Promise<MemoryResult | null> {
+    if (this.l1Cache.has(key)) {
+      return { source: 'L1 (RAM)', response: this.l1Cache.get(key)! };
+    }
+    const l2Result = this.getL2(key);
+    if (l2Result) {
+      this.l1Cache.set(key, l2Result);
+      return { source: 'L2 (Disk)', response: l2Result };
+    }
+    const l3Result = this.getL3(key, 1.0); // Exact match only for manual recall
+    if (l3Result) {
+      this.l1Cache.set(key, l3Result);
+      this.setL2(key, l3Result);
+      return { source: 'L3 (Semantic)', response: l3Result };
+    }
+    return null;
+  }
+
+  /**
    * Queries the memory system for a prompt.
    * Checks caches in order: L1 -> L2 -> L3 -> L4.
    * 

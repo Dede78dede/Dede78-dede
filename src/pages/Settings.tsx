@@ -158,9 +158,22 @@ export function Settings() {
   /**
    * Saves the local settings state to the global SettingsContext.
    */
-  const handleSave = () => {
+  const handleSave = async () => {
     updateSettings(localSettings);
     setIsSaved(true);
+    
+    // Trigger auto-sync if connected
+    if (isGoogleDriveConnected) {
+      try {
+        await triggerManualBackup();
+        showNotification('Impostazioni salvate e sincronizzate con Google Drive.', 'success');
+      } catch (e) {
+        showNotification('Impostazioni salvate, ma errore durante la sincronizzazione.', 'error');
+      }
+    } else {
+      showNotification('Impostazioni salvate localmente.', 'success');
+    }
+
     setTimeout(() => setIsSaved(false), 3000);
   };
 
@@ -839,7 +852,30 @@ export function Settings() {
             <h3 className="font-medium text-zinc-100">Backup & Sincronizzazione</h3>
           </div>
           <div className="p-6 space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1">Google Client ID</label>
+                <input 
+                  type="text" 
+                  value={localSettings.googleDriveClientId}
+                  onChange={(e) => handleChange('googleDriveClientId', e.target.value)}
+                  placeholder="xxxx-xxxx.apps.googleusercontent.com"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-sky-500 text-sm" 
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-zinc-400 mb-1">Google API Key</label>
+                <input 
+                  type="password" 
+                  value={localSettings.googleDriveApiKey}
+                  onChange={(e) => handleChange('googleDriveApiKey', e.target.value)}
+                  placeholder="AIzaSy..."
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-sky-500 text-sm" 
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-zinc-800 pt-6">
               <div>
                 <label className="block text-sm font-medium text-zinc-300">Google Drive Sync</label>
                 <p className="text-xs text-zinc-500 mt-1">Sincronizza automaticamente le configurazioni e i modelli su Google Drive.</p>
@@ -855,10 +891,13 @@ export function Settings() {
                 ) : (
                   <button
                     onClick={() => {
-                      // Placeholder config, in a real app these would be environment variables or user inputs
+                      if (!localSettings.googleDriveClientId || !localSettings.googleDriveApiKey) {
+                        showNotification('Inserisci Client ID e API Key per connettere Google Drive.', 'error');
+                        return;
+                      }
                       connectGoogleDrive({
-                        clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || 'YOUR_CLIENT_ID',
-                        apiKey: import.meta.env.VITE_GOOGLE_API_KEY || 'YOUR_API_KEY',
+                        clientId: localSettings.googleDriveClientId,
+                        apiKey: localSettings.googleDriveApiKey,
                         scopes: 'https://www.googleapis.com/auth/drive.appdata',
                         discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest']
                       });

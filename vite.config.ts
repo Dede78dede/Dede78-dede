@@ -16,6 +16,16 @@ export default defineConfig(({mode}) => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      minify: false,
+      rollupOptions: {
+        cache: false,
+        external: ['@huggingface/transformers', '@mlc-ai/web-llm']
+      }
+    },
+    optimizeDeps: {
+      exclude: ['@huggingface/transformers', '@mlc-ai/web-llm']
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.

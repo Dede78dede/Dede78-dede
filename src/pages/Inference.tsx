@@ -15,6 +15,7 @@ import { SmarterRouter } from '../services/SmarterRouter';
 import { microRouter } from '../services/MicroRouter';
 import { preflightResults } from '../preflight';
 import { authenticatedFetch } from '../utils/api';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 /**
  * Inference page component.
@@ -24,11 +25,12 @@ import { authenticatedFetch } from '../utils/api';
 export function Inference() {
   const { settings } = useSettings();
   const { chats, currentChatId, setCurrentChatId, createNewChat, updateChat, deleteChat, loading: chatsLoading } = useChat();
+  const location = useLocation();
   
   const [messages, setMessages] = useState<Message[]>([
     { role: 'assistant', content: 'SmarterRouter v1.0 pronto. Inserisci un prompt per testare i modelli locali o il Master Cloud.', model: 'system' }
   ]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(location.state?.initialPrompt || '');
   const [attachments, setAttachments] = useState<MessageAttachment[]>([]);
   const [useWebSearch, setUseWebSearch] = useState(false);
   const [selectedModel, setSelectedModel] = useState('auto');
@@ -38,6 +40,14 @@ export function Inference() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { updateSettings } = useSettings();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (location.state?.initialPrompt) {
+      // Clear the state so it doesn't persist on refresh
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location, navigate]);
 
   // Listen for Ollama connection breakout success
   useEffect(() => {
@@ -567,6 +577,20 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
                 });
                 return `🤖 *Master: Errore durante l'orchestrazione A2A.*\n\n` + e.message;
               }
+            } else if (result.action === 'STITCH_DESIGN') {
+              if (onChunkCb) onChunkCb(`🎨 *Master: ${result.message}*\n\n`);
+              // Here we could potentially redirect the user to the Stitch Design page
+              // or trigger a background generation. For now, we'll just inform them.
+              const stitchStart = Date.now();
+              
+              auditSteps.push({
+                component: 'MasterOrchestrator (Stitch)',
+                action: 'Generazione UI',
+                durationMs: Date.now() - stitchStart,
+                status: 'success'
+              });
+              
+              return `🎨 *Master: ${result.message}*\n\nHo identificato una richiesta di design UI. Per utilizzare Google Stitch, vai alla sezione "Stitch Design" nel menu laterale e inserisci il tuo prompt lì.`;
             } else if (result.action === 'AGENT_JOB') {
               if (onChunkCb) onChunkCb(`🤖 *Master: Avvio job asincrono per task complesso...*\n\n`);
               // Create a job via API

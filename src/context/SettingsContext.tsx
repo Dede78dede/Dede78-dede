@@ -29,6 +29,8 @@ export interface AppSettings {
   anthropicApiKey: string;
   groqApiKey: string;
   deepseekApiKey: string;
+  googleDriveClientId: string;
+  googleDriveApiKey: string;
   fallbackModel: string;
   edgeModel: string;
   ollamaUrl: string;
@@ -110,6 +112,8 @@ const defaultSettings: AppSettings = {
   anthropicApiKey: '',
   groqApiKey: '',
   deepseekApiKey: '',
+  googleDriveClientId: '',
+  googleDriveApiKey: '',
   fallbackModel: 'qwen2:7b',
   edgeModel: 'bitnet-b1',
   ollamaUrl: 'http://localhost:11434',

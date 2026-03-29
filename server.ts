@@ -7,7 +7,7 @@ import db from "./src/db/database"; // Initialize SQLite DB
 import { jobScheduler } from "./src/services/JobScheduler";
 import { workflowEngine } from "./src/services/WorkflowEngine";
 import { GoogleGenAI, Type } from "@google/genai";
-import * as admin from 'firebase-admin';
+import admin from 'firebase-admin';
 import firebaseConfig from './firebase-applet-config.json';
 
 // Initialize Firebase Admin

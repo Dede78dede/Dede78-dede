@@ -161,6 +161,83 @@ export function Workflows() {
     setNewSteps(updated);
   };
 
+  const handleBootstrapAgents = async () => {
+    try {
+      setIsLoading(true);
+      // Create Jules Agent Workflow
+      const julesPayload = {
+        name: 'Jules Agent - Code Review',
+        global_context: {
+          "code_snippet": "function add(a, b) { return a + b; }",
+          "language": "javascript"
+        },
+        steps: [
+          {
+            name: 'analyze_code',
+            model_config: {
+              provider: 'gemini',
+              model: 'gemini-2.5-flash',
+              systemPrompt: 'You are Jules, an expert code reviewer. Analyze the provided code snippet for potential bugs, performance issues, and style improvements.',
+              temperature: 0.2
+            },
+            input_prompt_template: 'Language: {{language}}\nCode:\n{{code_snippet}}\n\nPlease provide a detailed review.'
+          },
+          {
+            name: 'generate_report',
+            model_config: {
+              provider: 'gemini',
+              model: 'gemini-2.5-flash',
+              systemPrompt: 'You are Jules. Summarize the code review into a concise markdown report.',
+              temperature: 0.4
+            },
+            input_prompt_template: 'Based on this analysis:\n{{analyze_code}}\n\nGenerate a final markdown report.'
+          }
+        ]
+      };
+
+      // Create Antigravity Agent Workflow
+      const antigravityPayload = {
+        name: 'Antigravity Agent - System Optimization',
+        global_context: {
+          "system_metrics": "CPU: 85%, RAM: 90%, Disk: 45%",
+          "target_performance": "CPU < 60%, RAM < 70%"
+        },
+        steps: [
+          {
+            name: 'diagnose_bottlenecks',
+            model_config: {
+              provider: 'gemini',
+              model: 'gemini-3.1-pro-preview',
+              systemPrompt: 'You are Antigravity, an advanced system optimization AI. Diagnose performance bottlenecks based on system metrics.',
+              temperature: 0.1
+            },
+            input_prompt_template: 'Current Metrics: {{system_metrics}}\nTarget: {{target_performance}}\n\nIdentify the primary bottlenecks and suggest immediate actions.'
+          }
+        ]
+      };
+
+      await authenticatedFetch('/api/workflows/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(julesPayload)
+      });
+
+      await authenticatedFetch('/api/workflows/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(antigravityPayload)
+      });
+
+      await fetchWorkflows();
+      alert('Agents Jules and Antigravity bootstrapped successfully!');
+    } catch (err) {
+      console.error('Error bootstrapping agents', err);
+      alert('Error bootstrapping agents');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case WorkflowStatus.COMPLETED: return <CheckCircle className="w-5 h-5 text-emerald-500" />;
@@ -398,13 +475,23 @@ export function Workflows() {
           </h1>
           <p className="text-zinc-400 mt-1">Build and monitor multi-step LLM pipelines.</p>
         </div>
-        <button 
-          onClick={() => setIsCreating(true)}
-          className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-        >
-          <Plus className="w-4 h-4" />
-          New Workflow
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={handleBootstrapAgents}
+            disabled={isLoading}
+            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg font-medium transition-colors disabled:opacity-50"
+          >
+            <Activity className="w-4 h-4" />
+            Bootstrap Agents
+          </button>
+          <button 
+            onClick={() => setIsCreating(true)}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New Workflow
+          </button>
+        </div>
       </div>
 
       {isLoading ? (

@@ -1,4 +1,4 @@
-import { LayoutDashboard, Cpu, FolderKanban, Activity, Settings, HelpCircle, GitMerge, DownloadCloud, Bot } from 'lucide-react';
+import { LayoutDashboard, Cpu, FolderKanban, Activity, Settings, HelpCircle, GitMerge, DownloadCloud, Bot, Paintbrush } from 'lucide-react';
 import { cn } from '../utils/cn';
 
 interface SidebarProps {
@@ -17,6 +17,7 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
     { id: 'inference', label: 'Inferenza Rapida', icon: Cpu },
     { id: 'workflows', label: 'Workflows', icon: GitMerge },
     { id: 'agents', label: 'Agenti & A2A', icon: Bot },
+    { id: 'stitch', label: 'Stitch Design', icon: Paintbrush },
     { id: 'projects', label: 'Progetti (Obsidian)', icon: FolderKanban },
     { id: 'monitoring', label: 'Monitoraggio', icon: Activity },
     { id: 'help', label: 'Guida & Help', icon: HelpCircle },

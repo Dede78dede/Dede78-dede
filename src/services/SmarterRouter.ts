@@ -170,9 +170,11 @@ Scegli una delle seguenti azioni:
 - AGENT_JOB: Per richieste di addestramento (training/fine-tuning), valutazione (evaluation/benchmarking), o unione (merging) di modelli.
 - WEB_SEARCH: Per domande su eventi recenti, notizie, fatti in tempo reale o informazioni che richiedono una ricerca sul web per essere accurate.
 - FULL_CYCLE_RESOLUTION: Per richieste che implicano la diagnosi di un problema, la generazione di una patch e la verifica di sicurezza (es. "Risolvi questo bug", "Analizza e correggi questo errore").
+- STITCH_DESIGN: Per richieste di generazione o progettazione di interfacce utente (UI), dashboard, wireframe o componenti visivi.
 
 Se scegli AGENT_JOB, devi anche estrarre i parametri per il job (es. task_type: 'TRAINING', dataset: '...', epochs: ...).
-Se scegli FULL_CYCLE_RESOLUTION, estrai il payload (codice o log) e il contesto.`;
+Se scegli FULL_CYCLE_RESOLUTION, estrai il payload (codice o log) e il contesto.
+Se scegli STITCH_DESIGN, estrai il prompt per il design e il tema (light/dark).`;
 
       const response = await ai.models.generateContent({
         model: "gemini-3.1-pro-preview",
@@ -185,7 +187,7 @@ Se scegli FULL_CYCLE_RESOLUTION, estrai il payload (codice o log) e il contesto.
             properties: {
               action: {
                 type: Type.STRING,
-                enum: ["DIRECT_ANSWER", "REASONING_TASK", "LOCAL_DELEGATION", "AGENT_JOB", "WEB_SEARCH", "FULL_CYCLE_RESOLUTION"],
+                enum: ["DIRECT_ANSWER", "REASONING_TASK", "LOCAL_DELEGATION", "AGENT_JOB", "WEB_SEARCH", "FULL_CYCLE_RESOLUTION", "STITCH_DESIGN"],
                 description: "L'azione da intraprendere."
               },
               reasoningDomain: {
@@ -195,11 +197,12 @@ Se scegli FULL_CYCLE_RESOLUTION, estrai il payload (codice o log) e il contesto.
               },
               jobDetails: {
                 type: Type.OBJECT,
-                description: "Dettagli del job (solo se action è AGENT_JOB o FULL_CYCLE_RESOLUTION).",
+                description: "Dettagli del job (solo se action è AGENT_JOB, FULL_CYCLE_RESOLUTION o STITCH_DESIGN).",
                 properties: {
-                  task_type: { type: Type.STRING, description: "TRAINING, EVALUATION, MERGING, o FULL_CYCLE_RESOLUTION" },
+                  task_type: { type: Type.STRING, description: "TRAINING, EVALUATION, MERGING, FULL_CYCLE_RESOLUTION o STITCH_DESIGN" },
                   payload: { type: Type.OBJECT, description: "Parametri estratti dalla richiesta" },
-                  context: { type: Type.STRING, description: "Contesto per FULL_CYCLE_RESOLUTION" }
+                  context: { type: Type.STRING, description: "Contesto per FULL_CYCLE_RESOLUTION o STITCH_DESIGN" },
+                  theme: { type: Type.STRING, description: "Tema per STITCH_DESIGN (light/dark)" }
                 }
               },
               directResponse: {
@@ -257,6 +260,12 @@ Se scegli FULL_CYCLE_RESOLUTION, estrai il payload (codice o log) e il contesto.
         return {
           action: "WEB_SEARCH",
           message: "Ricerca web necessaria per informazioni aggiornate. Attivazione Grounding..."
+        };
+      } else if (result.action === "STITCH_DESIGN") {
+        return {
+          action: "STITCH_DESIGN",
+          message: "Avvio generazione UI con Google Stitch...",
+          jobDetails: result.jobDetails
         };
       } else {
         // DIRECT_ANSWER

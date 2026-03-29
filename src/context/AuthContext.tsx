@@ -1,8 +1,9 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { onAuthStateChanged, signInWithPopup, signOut, User } from 'firebase/auth';
+import { onAuthStateChanged, onIdTokenChanged, signInWithPopup, signOut, User } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../firebase';
 import { handleFirestoreError, OperationType } from '../utils/firestoreErrorHandler';
+import { setApiToken } from '../utils/api';
 
 interface AuthContextType {
   user: User | null;
@@ -52,7 +53,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     });
 
-    return unsubscribe;
+    const unsubscribeToken = onIdTokenChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        try {
+          const token = await currentUser.getIdToken();
+          setApiToken(token);
+        } catch (error) {
+          console.error('Failed to get Firebase ID token:', error);
+          setApiToken(null);
+        }
+      } else {
+        setApiToken(null);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      unsubscribeToken();
+    };
   }, []);
 
   /**

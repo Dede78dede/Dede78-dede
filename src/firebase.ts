@@ -15,4 +15,10 @@ if (!firebaseConfig || !firebaseConfig.apiKey || !firebaseConfig.projectId) {
 export const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+
+// Configure Google Provider with additional scopes for Google services
 export const googleProvider = new GoogleAuthProvider();
+// Add scopes for future integrations (Drive, Docs, GCP, etc.)
+// Note: We start with basic profile/email. We can request more scopes incrementally later using auth.currentUser.linkWithPopup()
+googleProvider.addScope('profile');
+googleProvider.addScope('email');

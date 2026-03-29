@@ -1,21 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { Menu, X, LogIn, LogOut } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
-import { Dashboard } from './pages/Dashboard';
-import { Models } from './pages/Models';
-import { Inference } from './pages/Inference';
-import { Workflows } from './pages/Workflows';
-import { Projects } from './pages/Projects';
-import { Monitoring } from './pages/Monitoring';
-import { Settings } from './pages/Settings';
-import { Help } from './pages/Help';
-import { Agents } from './pages/Agents';
 import { SettingsProvider } from './context/SettingsContext';
 import { BackupProvider } from './context/BackupContext';
 import { PermissionsModal } from './components/PermissionsModal';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ChatProvider } from './context/ChatContext';
 import { AgentWorker } from './components/AgentWorker';
+
+const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Models = lazy(() => import('./pages/Models').then(m => ({ default: m.Models })));
+const Inference = lazy(() => import('./pages/Inference').then(m => ({ default: m.Inference })));
+const Workflows = lazy(() => import('./pages/Workflows').then(m => ({ default: m.Workflows })));
+const Projects = lazy(() => import('./pages/Projects').then(m => ({ default: m.Projects })));
+const Monitoring = lazy(() => import('./pages/Monitoring').then(m => ({ default: m.Monitoring })));
+const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
+const Help = lazy(() => import('./pages/Help').then(m => ({ default: m.Help })));
+const Agents = lazy(() => import('./pages/Agents').then(m => ({ default: m.Agents })));
+const StitchDesign = lazy(() => import('./pages/StitchDesign').then(m => ({ default: m.StitchDesign })));
 
 /**
  * Main content component that manages the layout, routing (via state),
@@ -134,15 +136,18 @@ function AppContent() {
 
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto pt-16 md:pt-0 w-full">
-        {currentView === 'dashboard' && <Dashboard onNavigate={handleViewChange} />}
-        {currentView === 'models' && <Models />}
-        {currentView === 'inference' && <Inference />}
-        {currentView === 'workflows' && <Workflows />}
-        {currentView === 'agents' && <Agents />}
-        {currentView === 'projects' && <Projects />}
-        {currentView === 'monitoring' && <Monitoring />}
-        {currentView === 'settings' && <Settings />}
-        {currentView === 'help' && <Help />}
+        <Suspense fallback={<div className="p-8 text-zinc-400">Caricamento...</div>}>
+          {currentView === 'dashboard' && <Dashboard onNavigate={handleViewChange} />}
+          {currentView === 'models' && <Models />}
+          {currentView === 'inference' && <Inference />}
+          {currentView === 'workflows' && <Workflows />}
+          {currentView === 'agents' && <Agents />}
+          {currentView === 'stitch' && <StitchDesign />}
+          {currentView === 'projects' && <Projects />}
+          {currentView === 'monitoring' && <Monitoring />}
+          {currentView === 'settings' && <Settings />}
+          {currentView === 'help' && <Help />}
+        </Suspense>
       </main>
     </div>
   );
