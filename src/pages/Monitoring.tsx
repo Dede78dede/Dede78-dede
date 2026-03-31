@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
-import { metricsService, MetricEvent, AuditTrailStep } from '../services/MetricsService';
+import { AuditTrailStep } from '../services/MetricsService';
 import { Activity, CheckCircle2, AlertCircle, Info, Clock } from 'lucide-react';
+import { useMonitoringLogic } from '../features/monitoring/hooks/useMonitoringLogic';
 
 /**
  * Monitoring page component.
@@ -10,41 +10,13 @@ import { Activity, CheckCircle2, AlertCircle, Info, Clock } from 'lucide-react';
  * and estimated token savings.
  */
 export function Monitoring() {
-  const [metrics, setMetrics] = useState<MetricEvent[]>([]);
-
-  useEffect(() => {
-    setMetrics(metricsService.getMetrics());
-    const unsubscribe = metricsService.subscribe(() => {
-      setMetrics([...metricsService.getMetrics()]);
-    });
-    return unsubscribe;
-  }, []);
-
-  const latencyEvents = metrics.filter(m => m.type === 'latency').slice(-10);
-  const latencyData = latencyEvents.map(m => {
-    const d = new Date(m.timestamp);
-    return {
-      time: `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`,
-      local: m.data.local || 0,
-      master: m.data.master || 0
-    };
-  });
-
-  const cacheEvents = metrics.filter(m => m.type === 'cache');
-  const hits = cacheEvents.filter(m => m.data.hit).length;
-  const misses = cacheEvents.filter(m => !m.data.hit).length;
-  const totalCache = hits + misses || 1; // prevent div by zero
-  
-  const cacheData = [
-    { name: 'Cache Hit', value: Math.round((hits / totalCache) * 100) },
-    { name: 'Cache Miss', value: Math.round((misses / totalCache) * 100) },
-  ];
-
-  const tokenEvents = metrics.filter(m => m.type === 'token');
-  const totalTokensSaved = tokenEvents.reduce((acc, m) => acc + (m.data.saved || 0), 0);
-  const tokenSavingsPercent = hits > 0 ? Math.min(99, Math.round((hits / totalCache) * 100)) : 0;
-
-  const auditEvents = metrics.filter(m => m.type === 'audit').reverse().slice(0, 10); // Show last 10 requests
+  const {
+    latencyData,
+    cacheData,
+    totalTokensSaved,
+    tokenSavingsPercent,
+    auditEvents
+  } = useMonitoringLogic();
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -129,7 +101,7 @@ export function Monitoring() {
                 <div key={i} className="bg-zinc-950/50 border border-zinc-800/50 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-3 border-b border-zinc-800/50 pb-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-mono text-zinc-500">{event.data.requestId}</span>
+                      <span className="text-xs font-mono text-zinc-500">{event.data.requestId as string}</span>
                     </div>
                     <div className="flex items-center gap-1 text-xs text-zinc-500">
                       <Clock className="w-3 h-3" />
@@ -138,7 +110,7 @@ export function Monitoring() {
                   </div>
                   
                   <div className="space-y-3 relative before:absolute before:inset-0 before:ml-2 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-zinc-800 before:to-transparent">
-                    {event.data.steps.map((step: AuditTrailStep, j: number) => (
+                    {(event.data.steps as AuditTrailStep[]).map((step: AuditTrailStep, j: number) => (
                       <div key={j} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
                         <div className="flex items-center justify-center w-5 h-5 rounded-full border border-zinc-800 bg-zinc-900 text-zinc-500 shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10">
                           {getStatusIcon(step.status)}

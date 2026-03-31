@@ -12,6 +12,12 @@ import path from "path";
  * Ambiti estesi: Può essere usato per l'analisi di impatto su documenti legali (se cambia una clausola),
  * specifiche ingegneristiche o documentazione medica.
  */
+export interface JulesImpactAnalysis {
+  impactedFiles: string[];
+  reasoning: string;
+  suggestedChanges: Record<string, string>;
+}
+
 export class JulesAgent {
   private ai: GoogleGenAI;
   private model = "gemini-3.1-pro-preview";
@@ -25,7 +31,7 @@ export class JulesAgent {
    * Analizza una modifica a un file e determina quali altri file nel sistema
    * potrebbero essere impattati (Dependency Graph Analysis).
    */
-  async analyzeImpact(filePath: string, newContent: string, projectContext: string): Promise<any> {
+  async analyzeImpact(filePath: string, newContent: string, projectContext: string): Promise<JulesImpactAnalysis> {
     const systemInstruction = `Sei Jules, un agente di orchestrazione del codice e del contesto globale.
 Il tuo compito è analizzare una modifica a un file e prevedere l'impatto sul resto del sistema.
 Non limitarti al codice software: se il contesto è legale, finanziario o documentale, applica la stessa logica di coerenza globale.
@@ -52,7 +58,7 @@ Identifica i file impattati e suggerisci le modifiche necessarie per mantenere l
         }
       });
 
-      return JSON.parse(response.text || "{}");
+      return JSON.parse(response.text || "{}") as JulesImpactAnalysis;
     } catch (error) {
       console.error("[Jules] Errore durante l'analisi di impatto:", error);
       throw error;

@@ -1,22 +1,7 @@
-import { useState, useEffect } from 'react';
 import { Activity, Cpu, HardDrive, Network, CheckCircle2, Clock, AlertCircle, LucideIcon, Download, Plus, GitMerge, DownloadCloud } from 'lucide-react';
 import { cn } from '../utils/cn';
-import { manifestoContent } from '../utils/manifesto';
-import { AgentService, Agent, Job } from '../services/agentService';
-import { useSettings } from '../context/SettingsContext';
 import { AgentStatus, JobStatus, WorkflowStatus } from '../types/enums';
-import { authenticatedFetch } from '../utils/api';
-
-interface Workflow {
-  id: string;
-  name: string;
-  status: WorkflowStatus;
-  global_context: string;
-  created_at: string;
-  updated_at: string;
-  total_steps?: number;
-  completed_steps?: number;
-}
+import { useDashboardLogic } from '../features/dashboard/hooks/useDashboardLogic';
 
 /**
  * Dashboard page component.
@@ -24,67 +9,15 @@ interface Workflow {
  * Provides actions to download the manifesto and create test jobs.
  */
 export function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void }) {
-  const { settings } = useSettings();
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [workflows, setWorkflows] = useState<Workflow[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  /**
-   * Fetches the latest agent and job data from the AgentService.
-   */
-  const fetchData = async () => {
-    try {
-      const [agentsData, jobsData, workflowsRes] = await Promise.all([
-        AgentService.getAgents(),
-        AgentService.getJobs(),
-        authenticatedFetch('/api/workflows')
-      ]);
-      const workflowsData = await workflowsRes.json();
-      setAgents(agentsData);
-      setJobs(jobsData);
-      if (workflowsData.workflows) {
-        setWorkflows(workflowsData.workflows);
-      }
-    } catch (error) {
-      console.error("Errore recupero dati dashboard:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, settings.agentPollingInterval);
-    return () => clearInterval(interval);
-  }, [settings.agentPollingInterval]);
-
-  /**
-   * Handles downloading the SmarterRouter manifesto as a markdown file.
-   */
-  const handleDownloadManifesto = () => {
-    const blob = new Blob([manifestoContent], { type: 'text/markdown' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'SmarterRouter_Manifesto.md';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  /**
-   * Creates a test job to simulate agent activity.
-   */
-  const handleCreateTestJob = async () => {
-    try {
-      await AgentService.createJob('TRAINING', { dataset: 'test.md', epochs: 3 });
-      fetchData();
-    } catch (error) {
-      alert("Errore creazione job");
-    }
-  };
+  const {
+    agents,
+    jobs,
+    workflows,
+    isLoading,
+    settings,
+    handleDownloadManifesto,
+    handleCreateTestJob
+  } = useDashboardLogic();
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">

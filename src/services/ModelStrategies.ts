@@ -10,7 +10,7 @@ export interface ModelConfig {
 }
 
 export interface WorkflowContext {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 export interface IModelStrategy {
@@ -26,8 +26,8 @@ export class GeminiStrategy implements IModelStrategy {
 abstract class BaseCloudStrategy implements IModelStrategy {
   protected abstract getUrl(): string;
   protected abstract getHeaders(apiKey: string): Record<string, string>;
-  protected abstract getBody(prompt: string, config: ModelConfig): any;
-  protected abstract extractResponse(data: any): string;
+  protected abstract getBody(prompt: string, config: ModelConfig): Record<string, unknown>;
+  protected abstract extractResponse(data: unknown): string;
 
   async execute(prompt: string, config: ModelConfig, context: WorkflowContext): Promise<string> {
     if (!config.apiKey) throw new Error(`${config.provider} API Key is missing`);
@@ -70,8 +70,9 @@ export class OpenAIStrategy extends BaseCloudStrategy {
       temperature: config.temperature
     };
   }
-  protected extractResponse(data: any) {
-    return data.choices?.[0]?.message?.content || "";
+  protected extractResponse(data: unknown) {
+    const response = data as { choices?: { message?: { content?: string } }[] };
+    return response.choices?.[0]?.message?.content || "";
   }
 }
 
@@ -85,7 +86,7 @@ export class AnthropicStrategy extends BaseCloudStrategy {
     };
   }
   protected getBody(prompt: string, config: ModelConfig) {
-    const body: any = {
+    const body: Record<string, unknown> = {
       model: config.model || "claude-3-5-sonnet-20240620",
       max_tokens: 1024,
       messages: [{ role: "user", content: prompt }]
@@ -94,8 +95,9 @@ export class AnthropicStrategy extends BaseCloudStrategy {
     if (config.temperature !== undefined) body.temperature = config.temperature;
     return body;
   }
-  protected extractResponse(data: any) {
-    return data.content?.[0]?.text || "";
+  protected extractResponse(data: unknown) {
+    const response = data as { content?: { text?: string }[] };
+    return response.content?.[0]?.text || "";
   }
 }
 

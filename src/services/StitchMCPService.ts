@@ -15,7 +15,7 @@ export interface StitchDesignResponse {
   error?: string;
 }
 
-type EventCallback = (data: any) => void;
+type EventCallback = (data: unknown) => void;
 
 /**
  * Mock Service for Google Stitch Integration via MCP.
@@ -50,7 +50,7 @@ export class StitchMCPService {
     this.listeners.set(event, callbacks);
   }
 
-  private emit(event: string, data?: any) {
+  private emit(event: string, data?: unknown) {
     if (!this.listeners.has(event)) return;
     this.listeners.get(event)!.forEach(cb => cb(data));
   }

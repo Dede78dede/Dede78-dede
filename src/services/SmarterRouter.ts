@@ -147,8 +147,9 @@ export class SmarterRouter {
              message: "⚡ *Policy Engine*: Instradamento forzato al modello locale (Privacy/Costo)."
            };
         }
-      } catch (e: any) {
-        console.warn("[PolicyEngine] Evaluation failed or constraints too strict:", e.message);
+      } catch (e: unknown) {
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        console.warn("[PolicyEngine] Evaluation failed or constraints too strict:", errorMessage);
       }
     }
 
@@ -274,9 +275,10 @@ Se scegli STITCH_DESIGN, estrai il prompt per il design e il tema (light/dark).`
           message: result.directResponse || "Non ho una risposta specifica, ma ho elaborato la tua richiesta."
         };
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Orchestrator error:", error);
-      throw new Error(`Errore Orchestrator: ${error.message || 'Errore sconosciuto'}`);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      throw new Error(`Errore Orchestrator: ${errorMessage || 'Errore sconosciuto'}`);
     }
   }
 }

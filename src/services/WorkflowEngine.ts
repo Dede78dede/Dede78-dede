@@ -86,7 +86,7 @@ export class WorkflowEngine extends EventEmitter {
 
       // console.log(`[WorkflowEngine] Step ${step.name} (${stepId}) completed successfully.`);
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`[WorkflowEngine] Step ${step.name} (${stepId}) failed:`, error);
       
       const newRetryCount = step.retry_count + 1;

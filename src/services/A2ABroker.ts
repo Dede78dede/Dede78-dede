@@ -7,16 +7,16 @@ export interface A2AMessage {
   sourceAgent: string;   // es. "Vertex_Main_Agent"
   targetAgent: string;   // es. "ADK_Diagnostic_Agent", "FULL_CYCLE_ORCHESTRATOR"
   taskType: "DIAGNOSIS" | "CODE_REVIEW" | "SECURITY_SCAN" | "IMPACT_ANALYSIS" | "FULL_CYCLE_RESOLUTION";
-  payload: any;          // I dati del problema (es. log di errore, codice)
+  payload: Record<string, unknown> | string;          // I dati del problema (es. log di errore, codice)
   context: string;       // Il contesto della conversazione con l'utente
 }
 
 export interface A2AResponse {
   messageId: string;
   status: "SUCCESS" | "FAILED" | "REQUIRES_HUMAN" | "RESOLVED_AUTONOMOUSLY";
-  result: any;
+  result: unknown;
   suggestedActions?: string[];
-  workflowTrace?: any[]; // Traccia dei passaggi tra agenti
+  workflowTrace?: Record<string, unknown>[]; // Traccia dei passaggi tra agenti
 }
 
 /**
@@ -47,12 +47,12 @@ export class A2ABroker {
         default:
           throw new Error(`Target agent ${message.targetAgent} not found or not supported.`);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`[A2A Broker] Error during delegation:`, error);
       return {
         messageId: message.messageId,
         status: "FAILED",
-        result: error.message
+        result: error instanceof Error ? error.message : String(error)
       };
     }
   }
@@ -90,7 +90,8 @@ Se la soluzione richiede una modifica al codice, suggerisci di aprire un ticket 
   private static async runJulesAgent(message: A2AMessage): Promise<A2AResponse> {
     const { JulesAgent } = await import('./JulesAgent');
     const jules = new JulesAgent();
-    const impact = await jules.analyzeImpact(message.payload.file || "unknown", message.payload.content || "", message.context);
+    const payload = message.payload as Record<string, unknown>;
+    const impact = await jules.analyzeImpact(String(payload.file || "unknown"), String(payload.content || ""), message.context);
     
     return {
       messageId: message.messageId,
@@ -101,8 +102,10 @@ Se la soluzione richiede una modifica al codice, suggerisci di aprire un ticket 
 
   private static async runAntigravityAgent(message: A2AMessage): Promise<A2AResponse> {
     const { AntigravityAgent } = await import('./AntigravityAgent');
+    type AntigravityPayloadType = import('./AntigravityAgent').AntigravityPayloadType;
     const antigravity = new AntigravityAgent();
-    const scan = await antigravity.scanPayload(message.payload.type || "CODE_PR", message.payload.content || "");
+    const payload = message.payload as Record<string, unknown>;
+    const scan = await antigravity.scanPayload(String(payload.type || "CODE_PR") as AntigravityPayloadType, String(payload.content || ""));
     
     return {
       messageId: message.messageId,
@@ -116,7 +119,7 @@ Se la soluzione richiede una modifica al codice, suggerisci di aprire un ticket 
    * Vertex -> ADK (Diagnosi) -> Jules (Patch) -> Antigravity (Verifica Sicurezza) -> Risoluzione
    */
   private static async runFullCycleResolution(message: A2AMessage): Promise<A2AResponse> {
-    const trace = [];
+    const trace: Record<string, unknown>[] = [];
     
     // 1. ADK Diagnosi
     trace.push({ step: "ADK_DIAGNOSIS", status: "STARTED" });
@@ -127,8 +130,9 @@ Se la soluzione richiede una modifica al codice, suggerisci di aprire un ticket 
     trace.push({ step: "JULES_PATCH_GENERATION", status: "STARTED" });
     const { JulesAgent } = await import('./JulesAgent');
     const jules = new JulesAgent();
-    const mockOriginalCode = typeof message.payload === 'string' ? message.payload : (message.payload.prompt || message.payload.sourceCode || "function login() { /* old code */ }");
-    const patch = await jules.generateRefactoringPatch("auth.ts", mockOriginalCode, diagnostic.result);
+    const payload = message.payload as Record<string, unknown>;
+    const mockOriginalCode = typeof message.payload === 'string' ? message.payload : String(payload.prompt || payload.sourceCode || "function login() { /* old code */ }");
+    const patch = await jules.generateRefactoringPatch("auth.ts", mockOriginalCode, String(diagnostic.result));
     trace.push({ step: "JULES_PATCH_GENERATION", status: "COMPLETED", output: patch });
 
     // 3. Antigravity verifica la patch generata da Jules

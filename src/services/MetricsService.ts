@@ -9,7 +9,7 @@ export interface AuditTrailStep {
 export interface MetricEvent {
   timestamp: number;
   type: 'latency' | 'cache' | 'token' | 'audit';
-  data: any;
+  data: Record<string, unknown>;
 }
 
 /**

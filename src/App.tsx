@@ -1,12 +1,13 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { lazy, Suspense } from 'react';
 import { Menu, X, LogIn, LogOut } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { SettingsProvider } from './context/SettingsContext';
 import { BackupProvider } from './context/BackupContext';
 import { PermissionsModal } from './components/PermissionsModal';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
 import { ChatProvider } from './context/ChatContext';
 import { AgentWorker } from './components/AgentWorker';
+import { useAppLogic } from './features/app/hooks/useAppLogic';
 
 const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const Models = lazy(() => import('./pages/Models').then(m => ({ default: m.Models })));
@@ -24,42 +25,15 @@ const StitchDesign = lazy(() => import('./pages/StitchDesign').then(m => ({ defa
  * and mobile responsiveness of the application.
  */
 function AppContent() {
-  const [currentView, setCurrentView] = useState('dashboard');
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const { user, login, logout } = useAuth();
-
-  useEffect(() => {
-    const checkInitialState = async () => {
-      try {
-        if (!('caches' in window)) return;
-        const cacheKeys = await caches.keys();
-        const transformersCaches = cacheKeys.filter(key => key.includes('transformers'));
-        
-        let hasModels = false;
-        for (const cacheName of transformersCaches) {
-          const cache = await caches.open(cacheName);
-          const requests = await cache.keys();
-          if (requests.length > 0) {
-            hasModels = true;
-            break;
-          }
-        }
-        
-        if (!hasModels) {
-          setCurrentView('models');
-        }
-      } catch (err) {
-        console.error("Error checking initial cache:", err);
-      }
-    };
-    
-    checkInitialState();
-  }, []);
-
-  const handleViewChange = (view: string) => {
-    setCurrentView(view);
-    setIsSidebarOpen(false); // Chiudi la sidebar su mobile dopo la selezione
-  };
+  const {
+    currentView,
+    isSidebarOpen,
+    setIsSidebarOpen,
+    user,
+    login,
+    logout,
+    handleViewChange
+  } = useAppLogic();
 
   return (
     <div className="flex h-screen bg-zinc-950 text-zinc-50 font-sans overflow-hidden relative">

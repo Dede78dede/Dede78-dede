@@ -18,6 +18,7 @@ env.backends.onnx.wasm.numThreads = 1;
  */
 export class MicroRouter {
   private static instance: MicroRouter;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private extractor: any = null;
   private isInitializing: boolean = false;
   private initializationPromise: Promise<void> | null = null;

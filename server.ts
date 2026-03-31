@@ -17,18 +17,12 @@ if (!admin.apps.length) {
   });
 }
 
-const getSafeVaultPath = (vaultPath: string) => {
-  const dataDir = path.resolve(process.cwd(), 'data');
-  // Strip leading slashes and drive letters to make it relative
-  const relativePath = vaultPath.replace(/^([a-zA-Z]:)?[\/\\]+/, '').replace(/^(\.\.[\/\\])+/, '');
-  const resolvedVaultPath = path.resolve(dataDir, relativePath);
-  if (!resolvedVaultPath.startsWith(dataDir)) {
-    throw new Error("Invalid vault path");
-  }
-  return resolvedVaultPath;
-};
+// getSafeVaultPath moved to src/server/utils/pathUtils.ts
 
 import { JobStatus, WorkflowStatus, WorkflowStepStatus } from './src/types/enums';
+import { ragRouter } from './src/server/routes/rag';
+import { obsidianRouter } from './src/server/routes/obsidian';
+import { cacheRouter } from './src/server/routes/cache';
 
 async function startServer() {
   const app = express();
@@ -183,143 +177,13 @@ async function startServer() {
   });
 
   // --- LOCAL RAG SYSTEM (L2) ---
-  let documentIndexer: any = null;
-
-  app.post("/api/rag/index", async (req, res) => {
-    const { vaultPath } = req.body;
-    if (!vaultPath) return res.status(400).json({ error: "Missing vaultPath" });
-
-    try {
-      const safeVaultPath = getSafeVaultPath(vaultPath);
-      if (!documentIndexer || documentIndexer.vaultPath !== safeVaultPath) {
-        const { DocumentIndexer } = await import('./src/services/RAG/DocumentIndexer');
-        const vectorStorePath = path.join(process.cwd(), '.rag_cache', 'vectors.json');
-        documentIndexer = new DocumentIndexer(safeVaultPath, vectorStorePath);
-      }
-
-      if (documentIndexer.isIndexing) {
-        return res.status(409).json({ error: "Indexing already in progress" });
-      }
-
-      // Start indexing asynchronously
-      documentIndexer.indexVault().catch(console.error);
-      res.json({ message: "Indexing started" });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post("/api/rag/query", async (req, res) => {
-    const { vaultPath, query, topK } = req.body;
-    if (!vaultPath || !query) return res.status(400).json({ error: "Missing vaultPath or query" });
-
-    try {
-      const safeVaultPath = getSafeVaultPath(vaultPath);
-      if (!documentIndexer || documentIndexer.vaultPath !== safeVaultPath) {
-        const { DocumentIndexer } = await import('./src/services/RAG/DocumentIndexer');
-        const vectorStorePath = path.join(process.cwd(), '.rag_cache', 'vectors.json');
-        documentIndexer = new DocumentIndexer(safeVaultPath, vectorStorePath);
-      }
-
-      const results = await documentIndexer.query(query, topK || 3);
-      res.json({ results });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.get("/api/rag/status", async (req, res) => {
-    if (!documentIndexer) {
-      return res.json({ isIndexing: false, totalChunks: 0 });
-    }
-    res.json(documentIndexer.getStats());
-  });
+  app.use("/api/rag", ragRouter);
 
   // --- OBSIDIAN MCP SERVER (L3) ---
-  app.post("/api/obsidian/read", (req, res) => {
-    const { vaultPath, filePath } = req.body;
-    if (!vaultPath || !filePath) return res.status(400).json({ error: "Missing vaultPath or filePath" });
-    
-    try {
-      const safeVaultPath = getSafeVaultPath(vaultPath);
-      const fullPath = path.resolve(safeVaultPath, filePath);
-      if (!fullPath.startsWith(safeVaultPath)) {
-        return res.status(403).json({ error: "Access denied: Path traversal detected" });
-      }
-      if (!fs.existsSync(fullPath)) {
-        return res.status(404).json({ error: "File not found" });
-      }
-      const content = fs.readFileSync(fullPath, 'utf-8');
-      res.json({ content });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post("/api/obsidian/write", (req, res) => {
-    const { vaultPath, filePath, content } = req.body;
-    if (!vaultPath || !filePath || content === undefined) return res.status(400).json({ error: "Missing parameters" });
-
-    try {
-      const safeVaultPath = getSafeVaultPath(vaultPath);
-      const fullPath = path.resolve(safeVaultPath, filePath);
-      if (!fullPath.startsWith(safeVaultPath)) {
-        return res.status(403).json({ error: "Access denied: Path traversal detected" });
-      }
-      const dir = path.dirname(fullPath);
-      if (!fs.existsSync(dir)) {
-        fs.mkdirSync(dir, { recursive: true });
-      }
-      fs.writeFileSync(fullPath, content, 'utf-8');
-      res.json({ success: true, message: "File written successfully" });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post("/api/obsidian/list", (req, res) => {
-    const { vaultPath, directory = "" } = req.body;
-    if (!vaultPath) return res.status(400).json({ error: "Missing vaultPath" });
-
-    try {
-      const safeVaultPath = getSafeVaultPath(vaultPath);
-      const targetDir = path.resolve(safeVaultPath, directory);
-      if (!targetDir.startsWith(safeVaultPath)) {
-        return res.status(403).json({ error: "Access denied: Path traversal detected" });
-      }
-      if (!fs.existsSync(targetDir)) {
-        return res.json({ files: [] });
-      }
-      const files = fs.readdirSync(targetDir).filter(f => f.endsWith('.md'));
-      res.json({ files });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
+  app.use("/api/obsidian", obsidianRouter);
 
   // --- SEMANTIC CACHE (L2) ---
-  app.post("/api/cache/set", (req, res) => {
-    const { id, prompt, embedding, response } = req.body;
-    if (!id || !prompt || !embedding || !response) return res.status(400).json({ error: "Missing parameters" });
-
-    try {
-      const stmt = db.prepare('INSERT OR REPLACE INTO semantic_cache (id, prompt, embedding, response) VALUES (?, ?, ?, ?)');
-      stmt.run(id, prompt, JSON.stringify(embedding), response);
-      res.json({ success: true });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.get("/api/cache/all", (req, res) => {
-    try {
-      const stmt = db.prepare('SELECT * FROM semantic_cache');
-      const rows = stmt.all();
-      res.json({ cache: rows });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
+  app.use("/api/cache", cacheRouter);
 
   // --- WORKFLOW API ---
   app.post("/api/workflows/create", (req, res) => {
@@ -415,7 +279,7 @@ async function startServer() {
       
       // Se il rischio è CRITICAL, potremmo bloccare la richiesta o generare un alert
       if (securityReport.riskLevel === "CRITICAL") {
-        console.warn("[Antigravity] Rilevata minaccia CRITICA:", securityReport.vulnerabilities);
+        console.warn("[Antigravity] Rilevata minaccia CRITICA:", securityReport.findings);
         // In un sistema reale, qui scatterebbe un webhook verso PagerDuty o un blocco della PR
       }
 

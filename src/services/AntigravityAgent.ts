@@ -14,6 +14,14 @@ export type AntigravityPayloadType = "CODE_PR" | "API_REQUEST" | "FINANCIAL_TX" 
  * - Auto-Remediation SRE (SRE_LOGS)
  * - Anti-Phishing (SOCIAL_ENGINEERING)
  */
+export interface AntigravityScanResult {
+  riskLevel: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+  findings: string[];
+  mitigation: string;
+  redactedPayload?: string;
+  remediationScript?: string;
+}
+
 export class AntigravityAgent {
   private ai: GoogleGenAI;
   private model = "gemini-3.1-pro-preview";
@@ -26,7 +34,7 @@ export class AntigravityAgent {
   /**
    * Analizza un payload in tempo reale alla ricerca di vulnerabilità o comportamenti anomali.
    */
-  async scanPayload(payloadType: AntigravityPayloadType, payloadContent: string): Promise<any> {
+  async scanPayload(payloadType: AntigravityPayloadType, payloadContent: string): Promise<AntigravityScanResult> {
     let specificInstruction = "";
     switch(payloadType) {
       case "CODE_PR": specificInstruction = "Cerca vulnerabilità OWASP, iniezioni SQL/XSS e bug di sicurezza nel codice."; break;
@@ -69,7 +77,7 @@ Esegui un'analisi di sicurezza profonda e genera il report strutturato in JSON.`
         }
       });
 
-      return JSON.parse(response.text || "{}");
+      return JSON.parse(response.text || "{}") as AntigravityScanResult;
     } catch (error) {
       console.error("[Antigravity] Errore durante la scansione di sicurezza:", error);
       throw error;

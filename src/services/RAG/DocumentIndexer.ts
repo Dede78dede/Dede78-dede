@@ -17,7 +17,7 @@ export class DocumentIndexer {
   private async initExtractor() {
     if (!this.extractor) {
       // Using a fast model for embeddings
-      this.extractor = (await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2')) as any;
+      this.extractor = (await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2')) as any as FeatureExtractionPipeline;
     }
   }
 

@@ -1,4 +1,4 @@
-import { GoogleGenAI, Content, Part } from "@google/genai";
+import { GoogleGenAI, Content, Part, GenerateContentConfig, GroundingMetadata, GroundingChunk } from "@google/genai";
 import { Message } from "../context/ChatContext";
 
 /**
@@ -70,7 +70,7 @@ Se ti viene chiesto di creare un file, usa il protocollo LLM-CL per indicare l'a
     contents = prompt;
   }
 
-  const config: any = {
+  const config: GenerateContentConfig = {
     systemInstruction,
   };
 
@@ -86,7 +86,7 @@ Se ti viene chiesto di creare un file, usa il protocollo LLM-CL per indicare l'a
         config
       });
       let fullText = "";
-      let groundingMetadata: any = null;
+      let groundingMetadata: GroundingMetadata | null = null;
       
       for await (const chunk of responseStream) {
         const text = chunk.text || "";
@@ -99,9 +99,9 @@ Se ti viene chiesto di creare un file, usa il protocollo LLM-CL per indicare l'a
         onChunk(text);
       }
       
-      if (groundingMetadata?.groundingChunks?.length > 0) {
+      if (groundingMetadata?.groundingChunks && groundingMetadata.groundingChunks.length > 0) {
         let sourcesText = "\n\n**Fonti Web:**\n";
-        groundingMetadata.groundingChunks.forEach((c: any) => {
+        groundingMetadata.groundingChunks.forEach((c: GroundingChunk) => {
           if (c.web?.uri && c.web?.title) {
             sourcesText += `- [${c.web.title}](${c.web.uri})\n`;
           }
@@ -122,7 +122,7 @@ Se ti viene chiesto di creare un file, usa il protocollo LLM-CL per indicare l'a
       const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
       if (chunks && chunks.length > 0) {
         text += "\n\n**Fonti Web:**\n";
-        chunks.forEach((chunk: any) => {
+        chunks.forEach((chunk: GroundingChunk) => {
           if (chunk.web?.uri && chunk.web?.title) {
             text += `- [${chunk.web.title}](${chunk.web.uri})\n`;
           }

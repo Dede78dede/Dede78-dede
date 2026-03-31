@@ -21,11 +21,12 @@ export class ObsidianService {
       });
       this.isFallbackMode = false;
       return true;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Accesso al Vault negato o annullato:", error);
       
       // Fallback per iframes (come AI Studio) dove showDirectoryPicker è bloccato
-      if (error.message && error.message.includes('Cross origin sub frames')) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      if (errorMessage && errorMessage.includes('Cross origin sub frames')) {
         console.warn("File System Access API bloccata. Attivazione modalità di fallback (Download).");
         this.isFallbackMode = true;
         return true; // Ritorniamo true per permettere l'uso della modalità fallback

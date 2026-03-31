@@ -91,10 +91,10 @@ class JobScheduler extends EventEmitter {
 
   private async processTask(job: Job): Promise<void> {
     // Parse payload
-    let payload: any = {};
+    let payload: Record<string, unknown> = {};
     try {
       if (job.payload) {
-        payload = JSON.parse(job.payload);
+        payload = JSON.parse(job.payload) as Record<string, unknown>;
       }
     } catch (e) {
       console.error(`[JobScheduler] Failed to parse payload for job ${job.id}`);
@@ -104,7 +104,7 @@ class JobScheduler extends EventEmitter {
     switch (job.task_type) {
       case 'WORKFLOW':
         if (payload.workflow_id) {
-          await this.processWorkflow(payload.workflow_id, job.id);
+          await this.processWorkflow(payload.workflow_id as string, job.id);
         } else {
           throw new Error('Missing workflow_id in payload');
         }
@@ -129,7 +129,7 @@ class JobScheduler extends EventEmitter {
     }
   }
 
-  private async executeGeminiTask(jobId: string, task_type: string, payload: any) {
+  private async executeGeminiTask(jobId: string, task_type: string, payload: Record<string, unknown>) {
     let currentLogs = `Delegating ${task_type} task to frontend worker...\n`;
     this.updateJobStatus(jobId, JobStatus.PENDING_FRONTEND, 10, currentLogs);
     this.emit('pending_frontend');
@@ -147,8 +147,9 @@ class JobScheduler extends EventEmitter {
           currentLogs += `Step completed. Checking for next step...\n`;
           this.updateJobStatus(jobId, JobStatus.RUNNING, 50, currentLogs); // Update progress based on steps completed
         }
-      } catch (error: any) {
-        currentLogs += `Workflow failed: ${error.message}\n`;
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        currentLogs += `Workflow failed: ${errorMessage}\n`;
         this.updateJobStatus(jobId, JobStatus.FAILED, 100, currentLogs);
         throw error; // Re-throw to mark job as failed
       }

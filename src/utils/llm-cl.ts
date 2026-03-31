@@ -51,8 +51,8 @@ export class LLMCL {
    * Estrae azioni LLM-CL dal testo generato dal modello.
    * Ritorna il testo ripulito e un array di azioni.
    */
-  static parseActions(text: string): { cleanText: string, actions: any[] } {
-    const actions: any[] = [];
+  static parseActions(text: string): { cleanText: string, actions: Record<string, unknown>[] } {
+    const actions: Record<string, unknown>[] = [];
     let cleanText = text;
     
     // Regex per trovare blocchi LLM-CL: @v1.0{#action_name {#param "value"}}

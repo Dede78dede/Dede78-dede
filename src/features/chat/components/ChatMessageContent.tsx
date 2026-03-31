@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { ChevronDown, ChevronRight, Brain, Paperclip } from 'lucide-react';
-import { MessageAttachment } from '../context/ChatContext';
+import { MessageAttachment } from '../../../context/ChatContext';
 
 interface ChatMessageProps {
   role: 'user' | 'assistant' | 'system';

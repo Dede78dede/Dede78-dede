@@ -39,7 +39,7 @@ export class AgentService {
    * Crea un nuovo Job asincrono (es. Training, Merging, Evaluation)
    * che verrà prelevato da un worker Python.
    */
-  static async createJob(taskType: string, payload: any): Promise<string> {
+  static async createJob(taskType: string, payload: Record<string, unknown>): Promise<string> {
     const response = await authenticatedFetch("/api/jobs/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

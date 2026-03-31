@@ -1,5 +1,6 @@
-import { LayoutDashboard, Cpu, FolderKanban, Activity, Settings, HelpCircle, GitMerge, DownloadCloud, Bot, Paintbrush } from 'lucide-react';
+import { Cpu } from 'lucide-react';
 import { cn } from '../utils/cn';
+import { useSidebarLogic } from '../features/sidebar/hooks/useSidebarLogic';
 
 interface SidebarProps {
   currentView: string;
@@ -11,17 +12,7 @@ interface SidebarProps {
  * Renders the main navigation menu and handles view switching.
  */
 export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
-  const navItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'models', label: 'Modelli Locali', icon: DownloadCloud },
-    { id: 'inference', label: 'Inferenza Rapida', icon: Cpu },
-    { id: 'workflows', label: 'Workflows', icon: GitMerge },
-    { id: 'agents', label: 'Agenti & A2A', icon: Bot },
-    { id: 'stitch', label: 'Stitch Design', icon: Paintbrush },
-    { id: 'projects', label: 'Progetti (Obsidian)', icon: FolderKanban },
-    { id: 'monitoring', label: 'Monitoraggio', icon: Activity },
-    { id: 'help', label: 'Guida & Help', icon: HelpCircle },
-  ];
+  const { navItems, handleNavClick, SettingsIcon } = useSidebarLogic(currentView, setCurrentView);
 
   return (
     <aside className="w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col">
@@ -42,7 +33,7 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
           return (
             <button
               key={item.id}
-              onClick={() => setCurrentView(item.id)}
+              onClick={() => handleNavClick(item.id)}
               className={cn(
                 "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
                 isActive 
@@ -59,7 +50,7 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
 
       <div className="p-4 border-t border-zinc-800">
         <button 
-          onClick={() => setCurrentView('settings')}
+          onClick={() => handleNavClick('settings')}
           className={cn(
             "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
             currentView === 'settings' 
@@ -67,7 +58,7 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
               : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-200"
           )}
         >
-          <Settings className="w-4 h-4" />
+          <SettingsIcon className="w-4 h-4" />
           Impostazioni
         </button>
       </div>
