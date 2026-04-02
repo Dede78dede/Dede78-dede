@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 export function useAppLogic() {
-  const [currentView, setCurrentView] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { user, login, logout } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
+  
+  const currentView = location.pathname === '/' ? 'dashboard' : location.pathname.substring(1);
 
   useEffect(() => {
     const checkInitialState = async () => {
@@ -23,8 +27,8 @@ export function useAppLogic() {
           }
         }
         
-        if (!hasModels) {
-          setCurrentView('models');
+        if (!hasModels && location.pathname === '/') {
+          navigate('/models');
         }
       } catch (err) {
         console.error("Error checking initial cache:", err);
@@ -32,10 +36,10 @@ export function useAppLogic() {
     };
     
     checkInitialState();
-  }, []);
+  }, [navigate, location.pathname]);
 
   const handleViewChange = (view: string) => {
-    setCurrentView(view);
+    navigate(`/${view}`);
     setIsSidebarOpen(false); // Chiudi la sidebar su mobile dopo la selezione
   };
 

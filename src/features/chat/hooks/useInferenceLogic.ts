@@ -233,7 +233,7 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
     };
 
     const startTime = Date.now();
-    const requestId = `req_${startTime}_${Math.random().toString(36).substr(2, 9)}`;
+    const requestId = `req_${startTime}_${crypto.randomUUID()}`;
     const auditSteps: AuditTrailStep[] = [];
 
     const activeProfile = settings.profiles.find(p => p.id === settings.activeProfileId) || settings.profiles[0];

@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { Menu, X, LogIn, LogOut } from 'lucide-react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { SettingsProvider } from './context/SettingsContext';
 import { BackupProvider } from './context/BackupContext';
@@ -36,7 +37,7 @@ function AppContent() {
   } = useAppLogic();
 
   return (
-    <div className="flex h-screen bg-zinc-950 text-zinc-50 font-sans overflow-hidden relative">
+    <div className="flex h-viewport bg-zinc-950 text-zinc-50 font-sans overflow-hidden relative">
       {/* Mobile Header */}
       <div className="md:hidden absolute top-0 left-0 right-0 h-16 bg-zinc-900 border-b border-zinc-800 flex items-center justify-between px-4 z-40">
         <div className="font-bold text-zinc-100">LLM Platform</div>
@@ -111,16 +112,20 @@ function AppContent() {
       {/* Main Content */}
       <main className="flex-1 overflow-y-auto pt-16 md:pt-0 w-full">
         <Suspense fallback={<div className="p-8 text-zinc-400">Caricamento...</div>}>
-          {currentView === 'dashboard' && <Dashboard onNavigate={handleViewChange} />}
-          {currentView === 'models' && <Models />}
-          {currentView === 'inference' && <Inference />}
-          {currentView === 'workflows' && <Workflows />}
-          {currentView === 'agents' && <Agents />}
-          {currentView === 'stitch' && <StitchDesign />}
-          {currentView === 'projects' && <Projects />}
-          {currentView === 'monitoring' && <Monitoring />}
-          {currentView === 'settings' && <Settings />}
-          {currentView === 'help' && <Help />}
+          <Routes>
+            <Route path="/" element={<Dashboard onNavigate={handleViewChange} />} />
+            <Route path="/dashboard" element={<Dashboard onNavigate={handleViewChange} />} />
+            <Route path="/models" element={<Models />} />
+            <Route path="/inference" element={<Inference />} />
+            <Route path="/workflows" element={<Workflows />} />
+            <Route path="/agents" element={<Agents />} />
+            <Route path="/stitch" element={<StitchDesign />} />
+            <Route path="/projects" element={<Projects />} />
+            <Route path="/monitoring" element={<Monitoring />} />
+            <Route path="/settings" element={<Settings />} />
+            <Route path="/help" element={<Help />} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
         </Suspense>
       </main>
     </div>
@@ -135,16 +140,18 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <SettingsProvider>
-        <BackupProvider>
-          <ChatProvider>
-            <PermissionsModal />
-            <AppContent />
-            <AgentWorker />
-          </ChatProvider>
-        </BackupProvider>
-      </SettingsProvider>
-    </AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <SettingsProvider>
+          <BackupProvider>
+            <ChatProvider>
+              <PermissionsModal />
+              <AppContent />
+              <AgentWorker />
+            </ChatProvider>
+          </BackupProvider>
+        </SettingsProvider>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }

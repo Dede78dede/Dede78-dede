@@ -15,7 +15,7 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
   const { navItems, handleNavClick, SettingsIcon } = useSidebarLogic(currentView, setCurrentView);
 
   return (
-    <aside className="w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col">
+    <aside className="w-64 h-full bg-zinc-900 border-r border-zinc-800 flex flex-col">
       <div className="p-6">
         <h1 className="text-xl font-bold tracking-tight text-zinc-100 flex items-center gap-2">
           <div className="w-6 h-6 bg-emerald-500 rounded-md flex items-center justify-center">
@@ -48,7 +48,7 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
         })}
       </nav>
 
-      <div className="p-4 border-t border-zinc-800">
+      <div className="p-4 pb-24 border-t border-zinc-800">
         <button 
           onClick={() => handleNavClick('settings')}
           className={cn(

@@ -50,10 +50,17 @@ export async function runPreflight(): Promise<boolean> {
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1500);
-    const res = await fetch('http://localhost:11434/api/tags', { 
+    
+    const fetchPromise = fetch('http://localhost:11434/api/tags', { 
       method: 'GET', 
       signal: controller.signal 
     }).catch(() => null);
+
+    const timeoutPromise = new Promise<null>((resolve) => {
+      setTimeout(() => resolve(null), 1500);
+    });
+
+    const res = await Promise.race([fetchPromise, timeoutPromise]);
     clearTimeout(timeoutId);
     
     if (res && res.ok) {

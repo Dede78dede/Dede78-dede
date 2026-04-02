@@ -7,21 +7,36 @@ export function usePermissionsModalLogic() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    const asked = localStorage.getItem('permissions_asked');
+    let asked = false;
+    try {
+      asked = !!localStorage.getItem('permissions_asked');
+    } catch (e) {
+      console.warn("localStorage access denied");
+    }
+
     if (!asked) {
       setIsOpen(true);
     } else {
-      if (navigator.storage && navigator.storage.persisted) {
-        navigator.storage.persisted().then(setStorageGranted);
+      try {
+        if (navigator.storage && navigator.storage.persisted) {
+          navigator.storage.persisted().then(setStorageGranted).catch(() => {});
+        }
+      } catch (e) {
+        console.warn("navigator.storage access denied");
       }
     }
   }, []);
 
   const requestStorage = async () => {
-    if (navigator.storage && navigator.storage.persist) {
-      const granted = await navigator.storage.persist();
-      setStorageGranted(granted);
-    } else {
+    try {
+      if (navigator.storage && navigator.storage.persist) {
+        const granted = await navigator.storage.persist();
+        setStorageGranted(granted);
+      } else {
+        setStorageGranted(true);
+      }
+    } catch (e) {
+      console.warn("Storage persist request failed", e);
       setStorageGranted(true);
     }
   };
@@ -49,7 +64,11 @@ export function usePermissionsModalLogic() {
   };
 
   const handleClose = () => {
-    localStorage.setItem('permissions_asked', 'true');
+    try {
+      localStorage.setItem('permissions_asked', 'true');
+    } catch (e) {
+      console.warn("localStorage.setItem denied");
+    }
     setIsOpen(false);
   };
 

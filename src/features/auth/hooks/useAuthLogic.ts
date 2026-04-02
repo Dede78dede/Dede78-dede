@@ -10,12 +10,27 @@ export function useAuthLogic() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+    
+    // Fallback timeout in case onAuthStateChanged never fires (e.g. Safari iframe storage blocking)
+    const fallbackTimeout = setTimeout(() => {
+      if (isMounted) {
+        console.warn("Auth state check timed out. Proceeding as unauthenticated.");
+        setLoading(false);
+      }
+    }, 5000);
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      clearTimeout(fallbackTimeout);
+      if (!isMounted) return;
+      
       setUser(currentUser);
+      setLoading(false); // Set loading to false immediately
+
       
       if (currentUser) {
         try {
-          // Create or update user document
+          // Create or update user document in the background
           const userRef = doc(db, 'users', currentUser.uid);
           const userSnap = await getDoc(userRef);
           
@@ -32,11 +47,9 @@ export function useAuthLogic() {
             await setDoc(userRef, userData);
           }
         } catch (error) {
-          handleFirestoreError(error, OperationType.CREATE, `users/${currentUser.uid}`);
+          console.error("Error creating/fetching user document:", error);
         }
       }
-      
-      setLoading(false);
     });
 
     const unsubscribeToken = onIdTokenChanged(auth, async (currentUser) => {
@@ -54,6 +67,8 @@ export function useAuthLogic() {
     });
 
     return () => {
+      isMounted = false;
+      clearTimeout(fallbackTimeout);
       unsubscribe();
       unsubscribeToken();
     };

@@ -80,7 +80,7 @@ export class ErrorBoundary extends Component<Props, State> {
       }
 
       return (
-        <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center p-4 font-sans text-zinc-50">
+        <div className="min-h-viewport bg-zinc-950 flex flex-col items-center justify-center p-4 font-sans text-zinc-50">
           <div className="bg-zinc-900 border border-zinc-800 p-8 rounded-2xl shadow-2xl max-w-2xl w-full">
             <div className="flex items-center gap-4 mb-6">
               <div className="p-3 bg-red-500/10 rounded-xl border border-red-500/20">

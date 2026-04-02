@@ -6,6 +6,14 @@
 @custom-variant dark (&:is(.dark *));
 
 @layer utilities {
+  .h-viewport {
+    height: 100vh;
+    height: 100dvh;
+  }
+  .min-h-viewport {
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
   .markdown-body p {
     @apply mb-4 last:mb-0;
   }
@@ -258,6 +266,8 @@
     @apply border-border outline-ring/50;
   }
   body {
+    background-color: #09090b; /* Fallback for bg-zinc-950 */
+    color: #fafafa; /* Fallback for text-zinc-50 */
     @apply bg-background text-foreground;
   }
   html {

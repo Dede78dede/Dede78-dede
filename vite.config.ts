@@ -19,12 +19,8 @@ export default defineConfig(({mode}) => {
     build: {
       minify: false,
       rollupOptions: {
-        cache: false,
-        external: ['@huggingface/transformers', '@mlc-ai/web-llm']
+        cache: false
       }
-    },
-    optimizeDeps: {
-      exclude: ['@huggingface/transformers', '@mlc-ai/web-llm']
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
