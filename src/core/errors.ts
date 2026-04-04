@@ -1,60 +1,67 @@
 import { ErrorCode } from './enums';
 
-/**
- * Base custom error class for the application.
- */
-export class AppError extends Error {
-  public readonly code: ErrorCode;
-  public readonly details?: unknown;
+// --- VECCHIE CLASSI (Ripristinate per compatibilità) ---
 
+export class AppError extends Error {
+  public code: ErrorCode;
+  public details?: unknown;
   constructor(message: string, code: ErrorCode = ErrorCode.UNKNOWN_ERROR, details?: unknown) {
     super(message);
-    this.name = this.constructor.name;
     this.code = code;
     this.details = details;
-    Object.setPrototypeOf(this, AppError.prototype);
+    this.name = 'AppError';
   }
 }
 
-/**
- * Result tuple pattern for functional error handling (ex-try/ex-catch).
- * Returns [Error, null] on failure, or [null, Data] on success.
- */
 export type Result<T, E = AppError> = [E, null] | [null, T];
 
-/**
- * Decorator for class methods to automatically wrap execution in a try-catch block
- * and return a Result tuple.
- */
-export function TryCatch(errorCode: ErrorCode = ErrorCode.UNKNOWN_ERROR) {
-  return function (
-    target: any,
-    propertyKey: string,
-    descriptor: PropertyDescriptor
-  ) {
+export function TryCatch(defaultErrorCode: ErrorCode = ErrorCode.UNKNOWN_ERROR) {
+  return function (target: unknown, propertyKey: string, descriptor: PropertyDescriptor) {
     const originalMethod = descriptor.value;
-
-    descriptor.value = async function (...args: any[]): Promise<Result<any>> {
+    descriptor.value = async function (...args: unknown[]) {
       try {
         const result = await originalMethod.apply(this, args);
-        // If the result is already a Result tuple, return it directly
-        if (Array.isArray(result) && result.length === 2 && (result[0] === null || result[0] instanceof Error)) {
-          return result as Result<any>;
-        }
-        return [null, result];
-      } catch (error) {
-        if (error instanceof AppError) {
-          return [error, null];
-        }
-        const appError = new AppError(
-          error instanceof Error ? error.message : String(error),
-          errorCode,
-          error
-        );
+        return result; // Assuming the original method already returns a Result tuple
+      } catch (error: unknown) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const appError = error instanceof AppError ? error : new AppError(errorMessage, defaultErrorCode);
         return [appError, null];
       }
     };
-
     return descriptor;
   };
+}
+
+// --- NUOVE CLASSI (Core Engine) ---
+
+export class CoreEngineError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = this.constructor.name;
+    Error.captureStackTrace(this, this.constructor);
+  }
+}
+
+export class RoutingError extends CoreEngineError {
+  public phase: string;
+  constructor(message: string, phase: string) {
+    super(`[Routing - ${phase}] ${message}`);
+    this.phase = phase;
+  }
+}
+
+export class AdapterError extends CoreEngineError {
+  public provider: string;
+  constructor(message: string, provider: string) {
+    super(`[Adapter - ${provider}] ${message}`);
+    this.provider = provider;
+  }
+}
+
+export class MCPError extends CoreEngineError {
+  public toolName: string;
+  constructor(message: string, toolName: string) {
+    super(`[MCP Tool - ${toolName}] ${message}`);
+    this.toolName = toolName;
+  }
 }

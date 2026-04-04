@@ -47,7 +47,20 @@ async function startServer() {
 
   // API routes FIRST
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", message: "SmarterRouter API Gateway is running" });
+    // Health Check Professionale
+    const healthStatus = {
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development',
+      checks: {
+        geminiApi: !!process.env.GEMINI_API_KEY,
+        firebaseAdmin: admin.apps.length > 0
+      }
+    };
+
+    const isHealthy = healthStatus.checks.geminiApi; // Se manca la chiave Gemini, l'app è "degraded"
+    
+    res.status(isHealthy ? 200 : 503).json(healthStatus);
   });
 
   // JWT Authentication Middleware
@@ -576,7 +589,7 @@ async function startServer() {
     vite = await createViteServer({
       server: { 
         middlewareMode: true,
-        hmr: {
+        hmr: process.env.DISABLE_HMR === 'true' ? false : {
           port: 24678
         }
       },
@@ -597,11 +610,8 @@ async function startServer() {
 
   server.on('error', (e: any) => {
     if (e.code === 'EADDRINUSE') {
-      console.error(`Port ${PORT} is already in use. Retrying in 1 second...`);
-      setTimeout(() => {
-        server.close();
-        server.listen(PORT, "0.0.0.0");
-      }, 1000);
+      console.error(`Port ${PORT} is already in use. Exiting...`);
+      process.exit(1);
     } else {
       console.error('Server error:', e);
     }

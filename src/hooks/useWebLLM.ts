@@ -37,7 +37,8 @@ export function useWebLLM(modelId: string | null) {
   const loadModel = useCallback(async () => {
     if (engine || !modelId) return;
     
-    if (!(navigator as any).gpu) {
+    const isWebGPUSupported = typeof navigator !== 'undefined' && 'gpu' in navigator;
+    if (!isWebGPUSupported) {
       setError("WebGPU non è supportato in questo browser. Impossibile caricare il modello WebLLM.");
       return;
     }

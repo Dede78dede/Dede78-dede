@@ -42,7 +42,8 @@ export async function runPreflight(): Promise<boolean> {
   }
 
   // 2. Test WebGPU
-  preflightResults.hasWebGPU = !!(navigator as any).gpu;
+  const isWebGPUSupported = typeof navigator !== 'undefined' && 'gpu' in navigator;
+  preflightResults.hasWebGPU = isWebGPUSupported;
   // console.log("[Preflight] WebGPU Support:", preflightResults.hasWebGPU);
 
   // 3. Test Local Network (Ollama)

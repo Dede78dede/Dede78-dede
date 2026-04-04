@@ -4,7 +4,6 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { SettingsProvider } from './context/SettingsContext';
 import { BackupProvider } from './context/BackupContext';
-import { PermissionsModal } from './components/PermissionsModal';
 import { AuthProvider } from './context/AuthContext';
 import { ChatProvider } from './context/ChatContext';
 import { AgentWorker } from './components/AgentWorker';
@@ -20,6 +19,7 @@ const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.S
 const Help = lazy(() => import('./pages/Help').then(m => ({ default: m.Help })));
 const Agents = lazy(() => import('./pages/Agents').then(m => ({ default: m.Agents })));
 const StitchDesign = lazy(() => import('./pages/StitchDesign').then(m => ({ default: m.StitchDesign })));
+const SmarterRouterPage = lazy(() => import('./pages/SmarterRouterPage').then(m => ({ default: m.SmarterRouterPage })));
 
 /**
  * Main content component that manages the layout, routing (via state),
@@ -119,6 +119,7 @@ function AppContent() {
             <Route path="/inference" element={<Inference />} />
             <Route path="/workflows" element={<Workflows />} />
             <Route path="/agents" element={<Agents />} />
+            <Route path="/smarter-router" element={<SmarterRouterPage />} />
             <Route path="/stitch" element={<StitchDesign />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/monitoring" element={<Monitoring />} />
@@ -145,7 +146,6 @@ export default function App() {
         <SettingsProvider>
           <BackupProvider>
             <ChatProvider>
-              <PermissionsModal />
               <AppContent />
               <AgentWorker />
             </ChatProvider>

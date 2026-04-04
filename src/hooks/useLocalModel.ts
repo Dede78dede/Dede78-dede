@@ -69,10 +69,10 @@ export function useLocalModel(modelId: string | null) {
     setIsLoading(true);
     setError(null);
     try {
-      const gen: any = await pipeline('text-generation', modelId, {
-        device: backend,
+      const gen = await pipeline('text-generation', modelId, {
+        device: backend as 'webgpu' | 'wasm',
       });
-      setGenerator(() => gen as TextGenerationPipeline);
+      setGenerator(() => gen as unknown as TextGenerationPipeline);
     } catch (err: unknown) {
       console.warn(`Failed to load model with ${backend}:`, err);
       
@@ -81,10 +81,10 @@ export function useLocalModel(modelId: string | null) {
         // console.log("Falling back to wasm backend...");
         setBackend('wasm');
         try {
-          const genFallback: any = await pipeline('text-generation', modelId, {
+          const genFallback = await pipeline('text-generation', modelId, {
             device: 'wasm',
           });
-          setGenerator(() => genFallback as TextGenerationPipeline);
+          setGenerator(() => genFallback as unknown as TextGenerationPipeline);
           setIsLoading(false);
           return;
         } catch (fallbackErr) {
@@ -114,10 +114,10 @@ export function useLocalModel(modelId: string | null) {
       setIsLoading(true);
       setError(null);
       try {
-        const gen: any = await pipeline('text-generation', modelId, {
-          device: backend,
+        const gen = await pipeline('text-generation', modelId, {
+          device: backend as 'webgpu' | 'wasm',
         });
-        currentGen = gen as TextGenerationPipeline;
+        currentGen = gen as unknown as TextGenerationPipeline;
         setGenerator(() => currentGen);
       } catch (err) {
         console.error("Failed to load model during generate:", err);
@@ -130,7 +130,7 @@ export function useLocalModel(modelId: string | null) {
     if (!currentGen) return null;
     
     try {
-      const result: any = await currentGen(prompt, { max_new_tokens: 100 });
+      const result = await currentGen(prompt, { max_new_tokens: 100 }) as unknown as Array<{ generated_text: string }> | { generated_text: string };
       return Array.isArray(result) ? result[0].generated_text : result.generated_text;
     } catch (err) {
       console.error("Generation error:", err);

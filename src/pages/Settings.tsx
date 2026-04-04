@@ -520,6 +520,7 @@ export function Settings() {
                   >
                     <option value="bitnet-b1">BitNet b1 (1.58-bit) - Ultra Light</option>
                     <option value="Xenova/Qwen1.5-0.5B-Chat">Qwen 0.5B (WebGPU)</option>
+                    <option value="onnx-community/gemma-4-E2B-it-ONNX">Gemma 4 (Edge)</option>
                   </select>
                   <p className="text-[10px] text-zinc-500 mt-1">Il modello ultra-leggero eseguito direttamente nel browser per routing e task istantanei.</p>
                 </div>

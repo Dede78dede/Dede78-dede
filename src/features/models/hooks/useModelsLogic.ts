@@ -15,6 +15,13 @@ export interface ModelInfo {
 
 export const AVAILABLE_MODELS: ModelInfo[] = [
   {
+    id: 'onnx-community/gemma-4-E2B-it-ONNX',
+    name: 'Gemma 4 (Edge)',
+    description: 'Il nuovo LLM Gemma 4, altamente ottimizzato per l\'esecuzione su dispositivi Edge. Offre capacità di ragionamento avanzate con un footprint ridotto.',
+    size: '~1.8GB',
+    type: 'webgpu'
+  },
+  {
     id: 'Xenova/Qwen1.5-0.5B-Chat',
     name: 'Qwen 0.5B (WebGPU)',
     description: 'Modello ultra-leggero e veloce, ottimizzato per WebGPU. Ideale per task semplici e routing.',
@@ -84,15 +91,17 @@ export function useModelsLogic() {
 
     try {
       // We just initialize the pipeline to trigger the download and caching
+      const isWebGPUSupported = typeof navigator !== 'undefined' && 'gpu' in navigator;
       await pipeline('text-generation', model.id, {
-        device: model.type === 'webgpu' && !!(navigator as any).gpu ? 'webgpu' : 'wasm',
-        progress_callback: (progressInfo: any) => {
+        device: model.type === 'webgpu' && isWebGPUSupported ? 'webgpu' : 'wasm',
+        progress_callback: (progressInfo: unknown) => {
+          const p = progressInfo as { status?: string; progress?: number; file?: string };
           setDownloadProgress(prev => ({
             ...prev,
-            [progressInfo.file || 'model']: {
-              status: progressInfo.status,
-              progress: progressInfo.progress || 0,
-              file: progressInfo.file || 'model'
+            [p.file || 'model']: {
+              status: p.status || 'unknown',
+              progress: p.progress || 0,
+              file: p.file || 'model'
             }
           }));
         }
@@ -104,9 +113,9 @@ export function useModelsLogic() {
       }
 
       await checkCache();
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Download failed:", err);
-      setError(`Errore durante il download: ${err.message}`);
+      setError(`Errore durante il download: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setDownloadingModel(null);
     }
