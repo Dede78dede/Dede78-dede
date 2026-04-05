@@ -7,13 +7,19 @@ export enum PrivacyLevel {
   CONFIDENTIAL = 'CONFIDENTIAL'
 }
 
+export interface RoutingMetadata extends Record<string, unknown> {
+  routingReason?: string;
+  competenceReason?: string;
+  securityFlags?: string[];
+}
+
 export interface RoutingContext {
   prompt: string;
   privacyLevel: PrivacyLevel;
   requiresHighReasoning: boolean;
   maxCost?: number;
   selectedBackend?: ILLMBackend;
-  metadata: Record<string, unknown>;
+  metadata: RoutingMetadata;
   tools?: MCPTool[];
 }
 

@@ -1,6 +1,7 @@
 import { Result, AdapterError } from '../errors';
+import { BackendType } from '../enums';
 
-export type BackendType = 'cloud' | 'ollama' | 'webgpu' | 'wasm';
+export { BackendType };
 
 export interface StandardLLMResponse {
   text: string;

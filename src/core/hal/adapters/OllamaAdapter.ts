@@ -3,7 +3,7 @@ import { AdapterError, Result } from '../../errors';
 
 export class OllamaAdapter implements ILLMBackend {
   public id: string;
-  public type: BackendType = 'ollama';
+  public type: BackendType = BackendType.OLLAMA;
   private baseUrl: string;
   private modelName: string;
 

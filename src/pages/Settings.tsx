@@ -1,6 +1,6 @@
 import React from 'react';
 import { Save, Server, Database, Shield, CheckCircle2, RefreshCw, AlertCircle, Command, User, Plus, Trash2, Box, Loader2, Cloud, UploadCloud, DownloadCloud } from 'lucide-react';
-import { SyncStatus } from '../core/enums';
+import { SyncStatus, KnownModelId } from '../core/enums';
 import { authenticatedFetch } from '../utils/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
@@ -351,12 +351,12 @@ export function Settings() {
                 onChange={(e) => handleChange('masterModel', e.target.value)}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-emerald-500 text-sm"
               >
-                <option value="gemini-2.5-flash">Gemini 2.5 Flash (Google) - Consigliato</option>
-                <option value="gemini">Gemini 3.1 Pro (Google)</option>
-                <option value="openai">GPT-4o (OpenAI)</option>
-                <option value="anthropic">Claude 3.5 Sonnet (Anthropic)</option>
-                <option value="groq">Llama 3 70B (Groq)</option>
-                <option value="deepseek">DeepSeek Chat</option>
+                <option value={KnownModelId.GEMINI_2_5_FLASH}>Gemini 2.5 Flash (Google) - Consigliato</option>
+                <option value={KnownModelId.GEMINI_3_1_PRO}>Gemini 3.1 Pro (Google)</option>
+                <option value={KnownModelId.GPT_4O}>GPT-4o (OpenAI)</option>
+                <option value={KnownModelId.CLAUDE_3_5_SONNET}>Claude 3.5 Sonnet (Anthropic)</option>
+                <option value={KnownModelId.LLAMA_3_70B}>Llama 3 70B (Groq)</option>
+                <option value={KnownModelId.DEEPSEEK_CHAT}>DeepSeek Chat</option>
               </select>
               <p className="text-xs text-zinc-500 mt-2">Il modello cloud principale utilizzato dallo SmarterRouter per task complessi e contesti ampi (RAG).</p>
             </div>
@@ -514,13 +514,13 @@ export function Settings() {
                 <div className="pt-4 border-t border-zinc-800/50">
                   <Label className="text-zinc-400 mb-1 block">Edge Model (WebGPU/WASM)</Label>
                   <select 
-                    value={localSettings.edgeModel || 'bitnet-b1'}
+                    value={localSettings.edgeModel || KnownModelId.BITNET_B1}
                     onChange={(e) => handleChange('edgeModel', e.target.value)}
                     className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-zinc-200 focus:outline-none focus:border-emerald-500 text-sm"
                   >
-                    <option value="bitnet-b1">BitNet b1 (1.58-bit) - Ultra Light</option>
-                    <option value="Xenova/Qwen1.5-0.5B-Chat">Qwen 0.5B (WebGPU)</option>
-                    <option value="onnx-community/gemma-4-E2B-it-ONNX">Gemma 4 (Edge)</option>
+                    <option value={KnownModelId.BITNET_B1}>BitNet b1 (1.58-bit) - Ultra Light</option>
+                    <option value={KnownModelId.QWEN_0_5B_WEBGPU}>Qwen 0.5B (WebGPU)</option>
+                    <option value={KnownModelId.GEMINI_4_EDGE}>Gemma 4 (Edge)</option>
                   </select>
                   <p className="text-[10px] text-zinc-500 mt-1">Il modello ultra-leggero eseguito direttamente nel browser per routing e task istantanei.</p>
                 </div>

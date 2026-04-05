@@ -4,7 +4,7 @@ import { AdapterError, Result } from '../../errors';
 
 export class WASMAdapter implements ILLMBackend {
   public id: string;
-  public type: BackendType = 'wasm';
+  public type: BackendType = BackendType.WASM;
   private generator: TextGenerationPipeline | null = null;
   private modelId: string;
   private isInitializing = false;

@@ -4,7 +4,7 @@ import { AdapterError, Result } from '../../errors';
 
 export class WebGPUAdapter implements ILLMBackend {
   public id: string;
-  public type: BackendType = 'webgpu';
+  public type: BackendType = BackendType.WEBGPU;
   private engine: MLCEngine | null = null;
   private modelId: string;
   private isInitializing = false;

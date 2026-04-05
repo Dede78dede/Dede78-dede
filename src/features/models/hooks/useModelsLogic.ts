@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { pipeline, env } from '@huggingface/transformers';
 import { useSettings } from '../../../context/SettingsContext';
+import { KnownModelId, DeviceType } from '../../../core/enums';
 
 // Skip local model check for browser environment
 env.allowLocalModels = false;
@@ -10,37 +11,37 @@ export interface ModelInfo {
   name: string;
   description: string;
   size: string;
-  type: 'webgpu' | 'wasm';
+  type: DeviceType;
 }
 
 export const AVAILABLE_MODELS: ModelInfo[] = [
   {
-    id: 'onnx-community/gemma-4-E2B-it-ONNX',
+    id: KnownModelId.GEMINI_4_EDGE,
     name: 'Gemma 4 (Edge)',
     description: 'Il nuovo LLM Gemma 4, altamente ottimizzato per l\'esecuzione su dispositivi Edge. Offre capacità di ragionamento avanzate con un footprint ridotto.',
     size: '~1.8GB',
-    type: 'webgpu'
+    type: DeviceType.WEBGPU
   },
   {
-    id: 'Xenova/Qwen1.5-0.5B-Chat',
+    id: KnownModelId.QWEN_0_5B_WEBGPU,
     name: 'Qwen 0.5B (WebGPU)',
     description: 'Modello ultra-leggero e veloce, ottimizzato per WebGPU. Ideale per task semplici e routing.',
     size: '~300MB',
-    type: 'webgpu'
+    type: DeviceType.WEBGPU
   },
   {
-    id: 'Xenova/TinyLlama-1.1B-Chat-v1.0',
+    id: KnownModelId.TINY_LLAMA_1_1B,
     name: 'TinyLlama 1.1B',
     description: 'Modello compatto per conversazioni generali. Buon bilanciamento tra velocità e qualità.',
     size: '~600MB',
-    type: 'wasm'
+    type: DeviceType.WASM
   },
   {
-    id: 'Xenova/LaMini-Flan-T5-783M',
+    id: KnownModelId.LA_MINI_FLAN_T5,
     name: 'LaMini Flan-T5',
     description: 'Modello eccellente per seguire istruzioni e task di NLP.',
     size: '~400MB',
-    type: 'wasm'
+    type: DeviceType.WASM
   }
 ];
 
@@ -93,7 +94,7 @@ export function useModelsLogic() {
       // We just initialize the pipeline to trigger the download and caching
       const isWebGPUSupported = typeof navigator !== 'undefined' && 'gpu' in navigator;
       await pipeline('text-generation', model.id, {
-        device: model.type === 'webgpu' && isWebGPUSupported ? 'webgpu' : 'wasm',
+        device: model.type === DeviceType.WEBGPU && isWebGPUSupported ? 'webgpu' : 'wasm',
         progress_callback: (progressInfo: unknown) => {
           const p = progressInfo as { status?: string; progress?: number; file?: string };
           setDownloadProgress(prev => ({
@@ -108,7 +109,7 @@ export function useModelsLogic() {
       });
       
       // Update settings to use this model as the edge model if it's the first one downloaded
-      if (!settings.edgeModel || settings.edgeModel === 'bitnet-b1') {
+      if (!settings.edgeModel || settings.edgeModel === KnownModelId.BITNET_B1) {
         updateSettings({ edgeModel: model.id });
       }
 
@@ -141,7 +142,7 @@ export function useModelsLogic() {
       
       // If we deleted the active edge model, reset it
       if (settings.edgeModel === modelId) {
-        updateSettings({ edgeModel: 'bitnet-b1' });
+        updateSettings({ edgeModel: KnownModelId.BITNET_B1 });
       }
     } catch (err) {
       console.error("Error clearing cache:", err);

@@ -6,6 +6,7 @@
 import { z } from 'zod';
 import { Result, AdapterError } from '../errors';
 import { StandardLLMResponse } from '../hal/types';
+import { BackendType } from '../enums';
 
 /**
  * Flag interne di stato per il tracciamento del ciclo di vita dell'esecuzione.
@@ -50,7 +51,7 @@ export interface TransactionMetadata {
  */
 export abstract class AbstractLLMBackend {
   public abstract readonly id: string;
-  public abstract readonly type: 'cloud' | 'webgpu' | 'ollama' | 'wasm';
+  public abstract readonly type: BackendType;
 
   /**
    * Verifica la disponibilità hardware/network del backend.

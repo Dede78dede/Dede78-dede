@@ -5,7 +5,7 @@ import { AdapterError, Result } from '../../errors';
 
 export class CloudAdapter implements ILLMBackend {
   public id: string;
-  public type: BackendType = 'cloud';
+  public type: BackendType = BackendType.CLOUD;
   private ai: GoogleGenAI;
   private modelName: string;
 
