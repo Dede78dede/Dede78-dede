@@ -1,3 +1,5 @@
+import { ModelProvider } from '../core/enums';
+
 export interface RoutingPolicy {
   maxCostPer1kTokens?: number;
   maxLatencyMs?: number;
@@ -5,7 +7,7 @@ export interface RoutingPolicy {
 }
 
 export interface ModelCapabilities {
-  provider: string;
+  provider: ModelProvider | 'local';
   model: string;
   costPer1kTokens: number;
   estimatedLatencyMs: number;
@@ -15,12 +17,12 @@ export interface ModelCapabilities {
 export class PolicyEngine {
   private static availableModels: ModelCapabilities[] = [
     { provider: 'local', model: 'ollama', costPer1kTokens: 0, estimatedLatencyMs: 500, isLocal: true },
-    { provider: 'groq', model: 'llama3-70b-8192', costPer1kTokens: 0.0007, estimatedLatencyMs: 300, isLocal: false },
-    { provider: 'openai', model: 'gpt-4o-mini', costPer1kTokens: 0.00015, estimatedLatencyMs: 800, isLocal: false },
-    { provider: 'anthropic', model: 'claude-3-haiku-20240307', costPer1kTokens: 0.00025, estimatedLatencyMs: 1000, isLocal: false },
-    { provider: 'openai', model: 'gpt-4o', costPer1kTokens: 0.005, estimatedLatencyMs: 1500, isLocal: false },
-    { provider: 'anthropic', model: 'claude-3-5-sonnet-20240620', costPer1kTokens: 0.003, estimatedLatencyMs: 2000, isLocal: false },
-    { provider: 'deepseek', model: 'deepseek-chat', costPer1kTokens: 0.00014, estimatedLatencyMs: 1200, isLocal: false }
+    { provider: ModelProvider.GROQ, model: 'llama3-70b-8192', costPer1kTokens: 0.0007, estimatedLatencyMs: 300, isLocal: false },
+    { provider: ModelProvider.OPENAI, model: 'gpt-4o-mini', costPer1kTokens: 0.00015, estimatedLatencyMs: 800, isLocal: false },
+    { provider: ModelProvider.ANTHROPIC, model: 'claude-3-haiku-20240307', costPer1kTokens: 0.00025, estimatedLatencyMs: 1000, isLocal: false },
+    { provider: ModelProvider.OPENAI, model: 'gpt-4o', costPer1kTokens: 0.005, estimatedLatencyMs: 1500, isLocal: false },
+    { provider: ModelProvider.ANTHROPIC, model: 'claude-3-5-sonnet-20240620', costPer1kTokens: 0.003, estimatedLatencyMs: 2000, isLocal: false },
+    { provider: ModelProvider.DEEPSEEK, model: 'deepseek-chat', costPer1kTokens: 0.00014, estimatedLatencyMs: 1200, isLocal: false }
   ];
 
   /**

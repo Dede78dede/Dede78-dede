@@ -19,6 +19,7 @@ export interface RoutingContext {
   requiresHighReasoning: boolean;
   maxCost?: number;
   selectedBackend?: ILLMBackend;
+  selectedBackendType?: 'local' | 'cloud';
   metadata: RoutingMetadata;
   tools?: MCPTool[];
 }

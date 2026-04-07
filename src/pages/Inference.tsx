@@ -1,3 +1,4 @@
+import React from 'react';
 import { Bot, User, Zap, Settings2, Loader2, Database, Cloud, MessageSquare, Plus, Trash2, AlertTriangle, Command, ShieldCheck, AlertCircle, Paperclip, X, Globe, Code2, Send } from 'lucide-react';
 import { ChatMessageContent } from '../features/chat/components/ChatMessageContent';
 import { useInferenceLogic } from '../features/chat/hooks/useInferenceLogic';
@@ -7,7 +8,7 @@ import { useInferenceLogic } from '../features/chat/hooks/useInferenceLogic';
  * Provides the main chat interface for interacting with various LLMs (Local, Cloud, Ollama).
  * Integrates with SmarterRouter for intelligent routing and MemorySystem for caching.
  */
-export function Inference() {
+export const Inference = React.memo(function Inference() {
   const {
     settings,
     updateSettings,
@@ -414,4 +415,4 @@ export function Inference() {
       </div>
     </div>
   );
-}
+});

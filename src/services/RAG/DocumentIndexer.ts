@@ -99,6 +99,52 @@ export class DocumentIndexer {
     }
   }
 
+  public async indexWebSearch(query: string) {
+    if (this.isIndexing) throw new Error("Indexing already in progress");
+    this.isIndexing = true;
+
+    try {
+      await this.initExtractor();
+      
+      console.log(`[DocumentIndexer] Executing web search for: ${query}`);
+      const { GoogleSearchTool } = await import('../../core/mcp/GoogleSearchMCP');
+      const searchResult = await GoogleSearchTool.execute({ query });
+      
+      if (searchResult && (searchResult as any).result) {
+        const content = (searchResult as any).result;
+        const chunks = this.chunkText(content);
+        
+        const documentChunks: DocumentChunk[] = [];
+        for (let i = 0; i < chunks.length; i++) {
+          const chunkContent = chunks[i];
+          if (!chunkContent) continue;
+
+          const output = await this.extractor!(chunkContent, { pooling: 'mean', normalize: true });
+          const embedding = Array.from(output.data as Float32Array);
+
+          documentChunks.push({
+            id: `web_search_${Date.now()}_${i}`,
+            filePath: `Web Search: ${query}`,
+            content: chunkContent,
+            embedding
+          });
+        }
+        
+        if (documentChunks.length > 0) {
+          this.vectorStore.addChunks(documentChunks);
+          console.log(`[DocumentIndexer] Indexed ${documentChunks.length} chunks from web search.`);
+        }
+      } else {
+        console.warn(`[DocumentIndexer] No results found for web search: ${query}`);
+      }
+    } catch (error) {
+      console.error(`[DocumentIndexer] Error indexing web search:`, error);
+      throw error;
+    } finally {
+      this.isIndexing = false;
+    }
+  }
+
   public async query(text: string, topK: number = 3): Promise<DocumentChunk[]> {
     await this.initExtractor();
     const output = await this.extractor!(text, { pooling: 'mean', normalize: true });

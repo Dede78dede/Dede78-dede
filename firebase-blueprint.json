@@ -192,9 +192,91 @@
         }
       },
       "required": ["userId", "query", "response", "createdAt", "updatedAt"]
+    },
+    "Agent": {
+      "title": "Agent",
+      "description": "AI Agent definition",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "type", "status", "createdAt"]
+    },
+    "Job": {
+      "title": "Job",
+      "description": "Background job execution",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "agentId": { "type": "string" },
+        "taskType": { "type": "string" },
+        "status": { "type": "string" },
+        "progress": { "type": "number" },
+        "logs": { "type": "string" },
+        "payload": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "taskType", "status", "createdAt", "updatedAt"]
+    },
+    "Workflow": {
+      "title": "Workflow",
+      "description": "Workflow definition",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "status": { "type": "string" },
+        "globalContext": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "name", "status", "createdAt", "updatedAt"]
+    },
+    "WorkflowStep": {
+      "title": "WorkflowStep",
+      "description": "Step within a workflow",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "workflowId": { "type": "string" },
+        "stepOrder": { "type": "number" },
+        "name": { "type": "string" },
+        "modelConfig": { "type": "string" },
+        "inputPromptTemplate": { "type": "string" },
+        "status": { "type": "string" },
+        "outputResult": { "type": "string" },
+        "retryCount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["workflowId", "stepOrder", "name", "modelConfig", "inputPromptTemplate", "status", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
+    "agents/{agentId}": {
+      "schema": { "$ref": "#/entities/Agent" },
+      "description": "User agents"
+    },
+    "jobs/{jobId}": {
+      "schema": { "$ref": "#/entities/Job" },
+      "description": "User jobs"
+    },
+    "workflows/{workflowId}": {
+      "schema": { "$ref": "#/entities/Workflow" },
+      "description": "User workflows"
+    },
+    "workflows/{workflowId}/steps/{stepId}": {
+      "schema": { "$ref": "#/entities/WorkflowStep" },
+      "description": "Workflow steps"
+    },
     "users/{userId}": {
       "schema": {
         "$ref": "#/entities/User"

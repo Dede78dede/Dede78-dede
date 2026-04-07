@@ -47,7 +47,7 @@ Nella pagina **Impostazioni** puoi:
  * Displays interactive documentation and a guide on how to use the
  * SmarterRouter platform, its features, and architecture.
  */
-export function Help() {
+export const Help = React.memo(function Help() {
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-8">
       <header>
@@ -81,4 +81,4 @@ export function Help() {
       </div>
     </div>
   );
-}
+});

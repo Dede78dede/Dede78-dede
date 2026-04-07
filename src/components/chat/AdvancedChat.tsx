@@ -4,7 +4,7 @@ import { ExecutionStateFlag } from '../../core/abc/protocols';
 import { PrivacyLevel } from '../../core/routing/types';
 import { Send, Shield, ShieldAlert, ShieldCheck, Loader2, Wrench, AlertCircle } from 'lucide-react';
 
-export const AdvancedChat: React.FC = () => {
+export const AdvancedChat: React.FC = React.memo(() => {
   const { messages, currentState, currentTool, error, sendMessage, clearSession } = useAgentSession('/vault');
   const [input, setInput] = useState('');
   const [privacy, setPrivacy] = useState<PrivacyLevel>(PrivacyLevel.MINIMUM);
@@ -155,4 +155,4 @@ export const AdvancedChat: React.FC = () => {
       </div>
     </div>
   );
-};
+});

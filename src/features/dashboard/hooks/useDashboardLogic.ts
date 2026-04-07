@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AgentService, Agent, Job } from '../../../services/agentService';
 import { useSettings } from '../../../context/SettingsContext';
-import { WorkflowStatus } from '../../../types/enums';
+import { WorkflowStatus } from '../../../core/enums';
 import { authenticatedFetch } from '../../../utils/api';
 import { manifestoContent } from '../../../utils/manifesto';
 
@@ -23,13 +23,20 @@ export function useDashboardLogic() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const [agentsData, jobsData, workflowsRes] = await Promise.all([
         AgentService.getAgents(),
         AgentService.getJobs(),
         authenticatedFetch('/api/workflows')
       ]);
+      
+      if (!workflowsRes.ok) {
+        const text = await workflowsRes.text();
+        console.error("Workflows API error:", workflowsRes.status, text.substring(0, 100));
+        throw new Error(`Errore nel recupero dei workflow: ${workflowsRes.status}`);
+      }
+      
       const workflowsData = await workflowsRes.json();
       setAgents(agentsData);
       setJobs(jobsData);
@@ -41,15 +48,15 @@ export function useDashboardLogic() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, settings.agentPollingInterval);
     return () => clearInterval(interval);
-  }, [settings.agentPollingInterval]);
+  }, [fetchData, settings.agentPollingInterval]);
 
-  const handleDownloadManifesto = () => {
+  const handleDownloadManifesto = useCallback(() => {
     const blob = new Blob([manifestoContent], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -59,16 +66,16 @@ export function useDashboardLogic() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  };
+  }, []);
 
-  const handleCreateTestJob = async () => {
+  const handleCreateTestJob = useCallback(async () => {
     try {
       await AgentService.createJob('TRAINING', { dataset: 'test.md', epochs: 3 });
       fetchData();
     } catch (error) {
       alert("Errore creazione job");
     }
-  };
+  }, [fetchData]);
 
   return {
     agents,

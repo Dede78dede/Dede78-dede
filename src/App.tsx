@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import React, { lazy, Suspense } from 'react';
 import { Menu, X, LogIn, LogOut } from 'lucide-react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
@@ -25,7 +25,7 @@ const SmarterRouterPage = lazy(() => import('./pages/SmarterRouterPage').then(m 
  * Main content component that manages the layout, routing (via state),
  * and mobile responsiveness of the application.
  */
-function AppContent() {
+const AppContent = React.memo(function AppContent() {
   const {
     currentView,
     isSidebarOpen,
@@ -131,7 +131,7 @@ function AppContent() {
       </main>
     </div>
   );
-}
+});
 
 /**
  * Root application component.
@@ -139,7 +139,7 @@ function AppContent() {
  * Settings, and Chat state management.
  */
 
-export default function App() {
+export default React.memo(function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
@@ -154,4 +154,4 @@ export default function App() {
       </AuthProvider>
     </BrowserRouter>
   );
-}
+});

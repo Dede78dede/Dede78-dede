@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAgentWorkerLogic } from '../features/worker/hooks/useAgentWorkerLogic';
 
-export const AgentWorker: React.FC = () => {
+export const AgentWorker: React.FC = React.memo(() => {
   const { isWorking, currentTask } = useAgentWorkerLogic();
 
   if (!isWorking && !currentTask) return null;
@@ -15,5 +15,5 @@ export const AgentWorker: React.FC = () => {
       </div>
     </div>
   );
-};
+});
 

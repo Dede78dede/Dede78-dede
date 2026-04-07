@@ -79,20 +79,4 @@ export class SmarterRouter {
       context
     }];
   }
-
-  /**
-   * Metodo statico di utilità per retrocompatibilità con il vecchio codice in useInferenceLogic.
-   * @deprecated Usare l'istanza di SmarterRouter per un controllo più granulare.
-   */
-  public static async orchestrate(prompt: string, systemPrompt: string, policy: unknown) {
-    const router = new SmarterRouter();
-    const context = await router.route(prompt);
-    
-    return {
-      action: context.selectedBackend?.type === 'cloud' ? 'MASTER_DELEGATION' : 'LOCAL_DELEGATION',
-      message: `Routing completato. Backend selezionato: ${context.selectedBackend?.id || 'Sconosciuto'}`,
-      reasoningDomain: context.requiresHighReasoning ? 'GENERAL' : undefined,
-      selectedBackend: context.selectedBackend?.id
-    };
-  }
 }

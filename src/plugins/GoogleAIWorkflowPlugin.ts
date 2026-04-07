@@ -1,5 +1,5 @@
 import db from '../db/database';
-import { WorkflowStatus, WorkflowStepStatus } from '../types/enums';
+import { WorkflowStatus, WorkflowStepStatus } from '../core/enums';
 
 /**
  * Plugin: Google AI Full-Stack Workflow

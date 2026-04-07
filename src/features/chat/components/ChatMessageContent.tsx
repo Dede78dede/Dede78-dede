@@ -9,7 +9,7 @@ interface ChatMessageProps {
   attachments?: MessageAttachment[];
 }
 
-export function ChatMessageContent({ role, content, attachments }: ChatMessageProps) {
+export const ChatMessageContent = React.memo(function ChatMessageContent({ role, content, attachments }: ChatMessageProps) {
   const [isThoughtExpanded, setIsThoughtExpanded] = useState(false);
 
   if (role === 'user') {
@@ -130,4 +130,4 @@ export function ChatMessageContent({ role, content, attachments }: ChatMessagePr
       )}
     </div>
   );
-}
+});

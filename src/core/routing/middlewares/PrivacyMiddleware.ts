@@ -8,13 +8,21 @@ export class PrivacyMiddleware implements IRouterMiddleware {
     }
 
     // Controllo dinamico: se il prompt contiene dati sensibili, eleva la privacy
-    // (In futuro questo può essere un micro-modello NLP, ora usiamo euristiche veloci)
     const sensitiveKeywords = ['password', 'ssn', 'confidential', 'secret', 'iban', 'carta di credito'];
     const lowerPrompt = context.prompt.toLowerCase();
     
-    if (sensitiveKeywords.some(kw => lowerPrompt.includes(kw))) {
+    const piiPatterns = [
+      /\b\d{3}-\d{2}-\d{4}\b/, // SSN
+      /\b(?:\d[ -]*?){13,16}\b/, // Credit Card
+      /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/ // Email
+    ];
+
+    const hasKeywords = sensitiveKeywords.some(kw => lowerPrompt.includes(kw));
+    const hasPII = piiPatterns.some(pattern => pattern.test(context.prompt));
+
+    if (hasKeywords || hasPII) {
       context.privacyLevel = PrivacyLevel.STRICT;
-      context.metadata.privacyReason = 'Dati sensibili rilevati nel prompt';
+      context.metadata.privacyReason = 'Dati sensibili o PII rilevati nel prompt';
     }
 
     await next();

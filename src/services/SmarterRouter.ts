@@ -1,5 +1,5 @@
 import { pipeline, FeatureExtractionPipeline } from '@huggingface/transformers';
-import { PolicyEngine, RoutingPolicy } from './PolicyEngine';
+import { RoutingPolicy } from './PolicyEngine';
 import { authenticatedFetch } from '../utils/api';
 
 /**
@@ -136,23 +136,28 @@ export class SmarterRouter {
    * Invia il prompt al MasterOrchestrator (MaAS) per l'analisi e l'azione.
    */
   static async orchestrate(prompt: string, systemPrompt?: string, policy?: RoutingPolicy): Promise<{ action: string, message: string, jobId?: string, reasoningDomain?: string, jobDetails?: any }> {
-    // 1. Evaluate Policy before sending data to cloud
-    if (policy) {
-      try {
-        const selectedModel = PolicyEngine.evaluate(prompt, policy);
-        if (selectedModel.isLocal) {
-           console.log("[PolicyEngine] Forcing LOCAL_DELEGATION due to policy constraints.");
-           return {
-             action: "LOCAL_DELEGATION",
-             message: "⚡ *Policy Engine*: Instradamento forzato al modello locale (Privacy/Costo)."
-           };
-        }
-      } catch (e: unknown) {
-        const errorMessage = e instanceof Error ? e.message : String(e);
-        console.warn("[PolicyEngine] Evaluation failed or constraints too strict:", errorMessage);
+    // 1. Evaluate using the new RouterPipeline (Chain of Responsibility)
+    try {
+      const { SmarterRouter: CoreSmarterRouter } = await import('../core/routing/SmarterRouter');
+      const { PrivacyLevel } = await import('../core/routing/types');
+      
+      const router = new CoreSmarterRouter();
+      // Mappa la policy (se presente) nel contesto o usa i default
+      const initialPrivacy = policy?.requireLocalPrivacy ? PrivacyLevel.STRICT : PrivacyLevel.MINIMUM;
+      const context = await router.route(prompt, initialPrivacy);
+
+      if (context.selectedBackendType === 'local' || context.selectedBackend?.type === 'local') {
+        console.log("[SmarterRouter] RouterPipeline selected LOCAL backend.");
+        return {
+          action: "LOCAL_DELEGATION",
+          message: "⚡ *SmarterRouter*: Instradamento al modello locale (Privacy/Costo/Competenza)."
+        };
       }
+    } catch (e: unknown) {
+      console.warn("[SmarterRouter] RouterPipeline evaluation failed:", e);
     }
 
+    // 2. If cloud is selected or pipeline fails, use Master Orchestrator (MaAS) for advanced intent classification
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (typeof process !== 'undefined' && process.env ? process.env.GEMINI_API_KEY : undefined);
     if (!apiKey) {
       throw new Error("API key non configurata per il Master Orchestrator.");

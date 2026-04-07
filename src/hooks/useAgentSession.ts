@@ -2,6 +2,8 @@ import { useState, useCallback, useRef } from 'react';
 import { SmarterRouter } from '../core/routing/SmarterRouter';
 import { AgentOrchestrator } from '../core/orchestrator/AgentOrchestrator';
 import { ObsidianMCP } from '../core/mcp/ObsidianMCP';
+import { SystemMCPRegistry } from '../core/mcp/SystemMCPRegistry';
+import { CompositeMCPRegistry } from '../core/mcp/CompositeMCPRegistry';
 import { ExecutionStateFlag, TransactionMetadata } from '../core/abc/protocols';
 import { PrivacyLevel } from '../core/routing/types';
 import { BackendRegistry } from '../core/hal/BackendRegistry';
@@ -28,7 +30,7 @@ export function useAgentSession(vaultPath: string = '/vault') {
   const settings = useSettingsStore(state => state.settings);
 
   // Inizializzazione Lazy del Core Engine
-  const engineRef = useRef<{ router: SmarterRouter; mcp: ObsidianMCP; orchestrator: AgentOrchestrator } | null>(null);
+  const engineRef = useRef<{ router: SmarterRouter; mcp: CompositeMCPRegistry; orchestrator: AgentOrchestrator } | null>(null);
 
   const initEngine = useCallback(() => {
     // Register backends with latest settings
@@ -46,7 +48,9 @@ export function useAgentSession(vaultPath: string = '/vault') {
 
     if (!engineRef.current) {
       const router = new SmarterRouter();
-      const mcp = new ObsidianMCP(vaultPath);
+      const obsidianMcp = new ObsidianMCP(vaultPath);
+      const systemMcp = new SystemMCPRegistry();
+      const mcp = new CompositeMCPRegistry([obsidianMcp, systemMcp]);
       const orchestrator = new AgentOrchestrator(router, mcp);
       
       // Override del metodo executeTask per intercettare gli eventi (Monkey Patching per la UI)

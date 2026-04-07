@@ -215,6 +215,56 @@ service cloud.firestore {
              data.updatedAt is timestamp;
     }
 
+    function isValidAgent(data) {
+      return hasOnlyAllowedFields(['id', 'userId', 'name', 'type', 'status', 'createdAt']) &&
+             isValidOptionalString('id', 1, 128) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.type is string && data.type.size() > 0 && data.type.size() < 100 &&
+             data.status is string && data.status.size() > 0 && data.status.size() < 100 &&
+             data.createdAt is timestamp;
+    }
+
+    function isValidJob(data) {
+      return hasOnlyAllowedFields(['id', 'userId', 'agentId', 'taskType', 'status', 'progress', 'logs', 'payload', 'createdAt', 'updatedAt']) &&
+             isValidOptionalString('id', 1, 128) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 128 &&
+             isValidOptionalString('agentId', 1, 128) &&
+             data.taskType is string && data.taskType.size() > 0 && data.taskType.size() < 100 &&
+             data.status is string && data.status.size() > 0 && data.status.size() < 100 &&
+             (!( 'progress' in data ) || (data.progress is number && data.progress >= 0 && data.progress <= 100)) &&
+             isValidOptionalString('logs', 0, 100000) &&
+             isValidOptionalString('payload', 0, 100000) &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidWorkflow(data) {
+      return hasOnlyAllowedFields(['id', 'userId', 'name', 'status', 'globalContext', 'createdAt', 'updatedAt']) &&
+             isValidOptionalString('id', 1, 128) &&
+             data.userId is string && data.userId.size() > 0 && data.userId.size() < 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.status is string && data.status.size() > 0 && data.status.size() < 100 &&
+             isValidOptionalString('globalContext', 0, 100000) &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
+    function isValidWorkflowStep(data) {
+      return hasOnlyAllowedFields(['id', 'workflowId', 'stepOrder', 'name', 'modelConfig', 'inputPromptTemplate', 'status', 'outputResult', 'retryCount', 'createdAt', 'updatedAt']) &&
+             isValidOptionalString('id', 1, 128) &&
+             data.workflowId is string && data.workflowId.size() > 0 && data.workflowId.size() < 128 &&
+             data.stepOrder is number && data.stepOrder >= 0 &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.modelConfig is string && data.modelConfig.size() > 0 && data.modelConfig.size() < 10000 &&
+             data.inputPromptTemplate is string && data.inputPromptTemplate.size() > 0 && data.inputPromptTemplate.size() < 100000 &&
+             data.status is string && data.status.size() > 0 && data.status.size() < 100 &&
+             isValidOptionalString('outputResult', 0, 100000) &&
+             (!( 'retryCount' in data ) || (data.retryCount is number && data.retryCount >= 0)) &&
+             data.createdAt is timestamp &&
+             data.updatedAt is timestamp;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -282,6 +332,33 @@ service cloud.firestore {
                        resource.data.userId == request.auth.uid && 
                        areImmutableFieldsUnchanged(['createdAt', 'userId']);
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+    match /agents/{agentId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidAgent(request.resource.data) && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidAgent(request.resource.data) && resource.data.userId == request.auth.uid && areImmutableFieldsUnchanged(['createdAt', 'userId']);
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /jobs/{jobId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidJob(request.resource.data) && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidJob(request.resource.data) && resource.data.userId == request.auth.uid && areImmutableFieldsUnchanged(['createdAt', 'userId']);
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /workflows/{workflowId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidWorkflow(request.resource.data) && request.resource.data.userId == request.auth.uid;
+      allow update: if isAuthenticated() && isValidWorkflow(request.resource.data) && resource.data.userId == request.auth.uid && areImmutableFieldsUnchanged(['createdAt', 'userId']);
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      
+      match /steps/{stepId} {
+        allow read: if isAuthenticated() && (get(/databases/$(database)/documents/workflows/$(workflowId)).data.userId == request.auth.uid || isAdmin());
+        allow create: if isAuthenticated() && isValidWorkflowStep(request.resource.data) && get(/databases/$(database)/documents/workflows/$(workflowId)).data.userId == request.auth.uid;
+        allow update: if isAuthenticated() && isValidWorkflowStep(request.resource.data) && get(/databases/$(database)/documents/workflows/$(workflowId)).data.userId == request.auth.uid && areImmutableFieldsUnchanged(['createdAt', 'workflowId']);
+        allow delete: if isAuthenticated() && (get(/databases/$(database)/documents/workflows/$(workflowId)).data.userId == request.auth.uid || isAdmin());
+      }
     }
   }
 }

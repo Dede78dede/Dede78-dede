@@ -56,12 +56,12 @@ export function useSettingsLogic() {
     checkWebLlmCache();
   }, [checkWebLlmCache]);
 
-  const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
+  const showNotification = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 3000);
-  };
+  }, []);
 
-  const deleteWebLlmModel = async (modelId: string) => {
+  const deleteWebLlmModel = useCallback(async (modelId: string) => {
     try {
       const { deleteModelAllInfoInCache } = await import('@mlc-ai/web-llm');
       await deleteModelAllInfoInCache(modelId);
@@ -70,7 +70,7 @@ export function useSettingsLogic() {
     } catch (error: any) {
       showNotification(`Errore durante la rimozione: ${error.message}`, 'error');
     }
-  };
+  }, [showNotification, checkWebLlmCache]);
 
   useEffect(() => {
     if (localSettings.useLocalRag) {
@@ -130,7 +130,7 @@ export function useSettingsLogic() {
     }
   }, []);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     updateSettings(localSettings);
     setIsSaved(true);
     
@@ -146,9 +146,9 @@ export function useSettingsLogic() {
     }
 
     setTimeout(() => setIsSaved(false), 3000);
-  };
+  }, [localSettings, updateSettings, isGoogleDriveConnected, triggerManualBackup, showNotification]);
 
-  const addMacro = () => {
+  const addMacro = useCallback(() => {
     const newMacro: Macro = {
       id: `macro_${Date.now()}`,
       trigger: 'new',
@@ -156,17 +156,17 @@ export function useSettingsLogic() {
       label: 'Nuova macro'
     };
     handleChange('macros', [...localSettings.macros, newMacro]);
-  };
+  }, [localSettings.macros, handleChange]);
 
-  const updateMacro = (id: string, field: keyof Macro, value: string) => {
+  const updateMacro = useCallback((id: string, field: keyof Macro, value: string) => {
     handleChange('macros', localSettings.macros.map(m => m.id === id ? { ...m, [field]: value } : m));
-  };
+  }, [localSettings.macros, handleChange]);
 
-  const deleteMacro = (id: string) => {
+  const deleteMacro = useCallback((id: string) => {
     handleChange('macros', localSettings.macros.filter(m => m.id !== id));
-  };
+  }, [localSettings.macros, handleChange]);
 
-  const addProfile = () => {
+  const addProfile = useCallback(() => {
     const newProfile: Profile = {
       id: `profile_${Date.now()}`,
       name: 'Nuovo Profilo',
@@ -176,13 +176,13 @@ export function useSettingsLogic() {
       fallbackModel: localSettings.fallbackModel
     };
     handleChange('profiles', [...localSettings.profiles, newProfile]);
-  };
+  }, [localSettings.profiles, localSettings.masterModel, localSettings.fallbackModel, handleChange]);
 
-  const updateProfile = (id: string, field: keyof Profile, value: string) => {
+  const updateProfile = useCallback((id: string, field: keyof Profile, value: string) => {
     handleChange('profiles', localSettings.profiles.map(p => p.id === id ? { ...p, [field]: value } : p));
-  };
+  }, [localSettings.profiles, handleChange]);
 
-  const deleteProfile = (id: string) => {
+  const deleteProfile = useCallback((id: string) => {
     if (localSettings.profiles.length <= 1) {
       showNotification('Devi avere almeno un profilo.', 'error');
       return;
@@ -191,7 +191,7 @@ export function useSettingsLogic() {
     if (localSettings.activeProfileId === id) {
       handleChange('activeProfileId', localSettings.profiles[0].id);
     }
-  };
+  }, [localSettings.profiles, localSettings.activeProfileId, handleChange, showNotification]);
 
   return {
     localSettings,

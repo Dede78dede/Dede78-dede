@@ -1,7 +1,8 @@
-import db from '../db/database';
 import { StrategyFactory, ModelConfig, WorkflowContext } from './ModelStrategies';
 import { EventEmitter } from 'events';
-import { WorkflowStatus, WorkflowStepStatus, ModelProvider } from '../types/enums';
+import { WorkflowStatus, WorkflowStepStatus, ModelProvider } from '../core/enums';
+import { firestoreDb } from '../db/firestore';
+import admin from 'firebase-admin';
 
 export interface WorkflowStep {
   id: string;
@@ -23,10 +24,6 @@ export interface Workflow {
 }
 
 export class WorkflowEngine extends EventEmitter {
-  /**
-   * Replaces variables in the template with values from the context.
-   * e.g., "Translate {{text}}" with context { text: "Hello" } -> "Translate Hello"
-   */
   private interpolatePrompt(template: string, context: WorkflowContext): string {
     return template.replace(/\{\{([^}]+)\}\}/g, (match, key) => {
       const trimmedKey = key.trim();
@@ -34,38 +31,41 @@ export class WorkflowEngine extends EventEmitter {
     });
   }
 
-  /**
-   * Executes a single step in the workflow.
-   */
   public async executeStep(stepId: string): Promise<void> {
-    const step = db.prepare('SELECT * FROM workflow_steps WHERE id = ?').get(stepId) as WorkflowStep | undefined;
-    if (!step) throw new Error(`Step ${stepId} not found`);
+    const stepSnapshot = await firestoreDb.collectionGroup('steps').where('id', '==', stepId).limit(1).get();
+    if (stepSnapshot.empty) throw new Error(`Step ${stepId} not found`);
+    const stepDoc = stepSnapshot.docs[0];
+    const step = { id: stepDoc.id, ...stepDoc.data() } as any as WorkflowStep;
 
-    const workflow = db.prepare('SELECT * FROM workflows WHERE id = ?').get(step.workflow_id) as Workflow | undefined;
-    if (!workflow) throw new Error(`Workflow ${step.workflow_id} not found`);
+    const workflowDoc = await firestoreDb.collection('workflows').doc(step.workflow_id).get();
+    if (!workflowDoc.exists) throw new Error(`Workflow ${step.workflow_id} not found`);
+    const workflow = { id: workflowDoc.id, ...workflowDoc.data() } as any as Workflow;
 
-    // Update step status to RUNNING
-    db.prepare('UPDATE workflow_steps SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(WorkflowStepStatus.RUNNING, stepId);
-    db.prepare('UPDATE workflows SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(WorkflowStatus.RUNNING, workflow.id);
+    await stepDoc.ref.update({
+      status: WorkflowStepStatus.RUNNING,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
+    await workflowDoc.ref.update({
+      status: WorkflowStatus.RUNNING,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
 
     try {
       const context: WorkflowContext = JSON.parse(workflow.global_context || '{}');
       const config: ModelConfig = JSON.parse(step.model_config);
 
-      // Interpolate prompt
       const prompt = this.interpolatePrompt(step.input_prompt_template, context);
-
-      // Get strategy and execute
       const strategy = StrategyFactory.getStrategy(config.provider);
       
-      if (config.provider === ModelProvider.GEMINI) {
-        db.prepare('UPDATE workflow_steps SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-          .run(WorkflowStepStatus.PENDING_FRONTEND, stepId);
+      if (config.provider === ModelProvider.GOOGLE) {
+        await stepDoc.ref.update({
+          status: WorkflowStepStatus.PENDING_FRONTEND,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
         this.emit('pending_frontend');
-        return; // Stop execution, frontend worker will pick it up
+        return;
       }
 
-      // Inject API keys from environment variables
       if (config.provider === ModelProvider.OPENAI) config.apiKey = process.env.OPENAI_API_KEY;
       if (config.provider === ModelProvider.ANTHROPIC) config.apiKey = process.env.ANTHROPIC_API_KEY;
       if (config.provider === ModelProvider.GROQ) config.apiKey = process.env.GROQ_API_KEY;
@@ -73,73 +73,81 @@ export class WorkflowEngine extends EventEmitter {
 
       const result = await strategy.execute(prompt, config, context);
 
-      // Update context with the result of this step
-      // We store it under the step's name to make it accessible to future steps
       context[step.name] = result;
 
-      // Save result and updated context
-      db.prepare('UPDATE workflow_steps SET status = ?, output_result = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-        .run(WorkflowStepStatus.COMPLETED, result, stepId);
+      await stepDoc.ref.update({
+        status: WorkflowStepStatus.COMPLETED,
+        outputResult: result,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
       
-      db.prepare('UPDATE workflows SET global_context = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-        .run(JSON.stringify(context), workflow.id);
-
-      // console.log(`[WorkflowEngine] Step ${step.name} (${stepId}) completed successfully.`);
+      await workflowDoc.ref.update({
+        globalContext: JSON.stringify(context),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
 
     } catch (error: unknown) {
       console.error(`[WorkflowEngine] Step ${step.name} (${stepId}) failed:`, error);
       
-      const newRetryCount = step.retry_count + 1;
-      const newStatus = newRetryCount >= 3 ? WorkflowStepStatus.FAILED : WorkflowStepStatus.PENDING; // Retry up to 3 times
+      const newRetryCount = (step.retry_count || 0) + 1;
+      const newStatus = newRetryCount >= 3 ? WorkflowStepStatus.FAILED : WorkflowStepStatus.PENDING;
       
-      db.prepare('UPDATE workflow_steps SET status = ?, retry_count = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-        .run(newStatus, newRetryCount, stepId);
+      await stepDoc.ref.update({
+        status: newStatus,
+        retryCount: newRetryCount,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
 
       if (newStatus === WorkflowStepStatus.FAILED) {
-        db.prepare('UPDATE workflows SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-          .run(WorkflowStatus.FAILED, workflow.id);
-        throw error; // Only throw if we've exhausted retries
+        await workflowDoc.ref.update({
+          status: WorkflowStatus.FAILED,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        throw error;
       }
     }
   }
 
-  /**
-   * Finds the next pending step for a given workflow and executes it.
-   */
   public async processNextStep(workflowId: string): Promise<boolean> {
-    // Check if any steps are currently running or waiting for frontend
-    const activeSteps = db.prepare('SELECT count(*) as count FROM workflow_steps WHERE workflow_id = ? AND status IN (?, ?)')
-      .get(workflowId, WorkflowStepStatus.RUNNING, WorkflowStepStatus.PENDING_FRONTEND) as { count: number };
-      
-    if (activeSteps.count > 0) {
-      // Wait for active steps to finish before proceeding
+    const activeStepsSnapshot = await firestoreDb.collection('workflows').doc(workflowId).collection('steps')
+      .where('status', 'in', [WorkflowStepStatus.RUNNING, WorkflowStepStatus.PENDING_FRONTEND])
+      .get();
+    
+    if (!activeStepsSnapshot.empty) {
       return false;
     }
 
-    const nextStep = db.prepare('SELECT * FROM workflow_steps WHERE workflow_id = ? AND status = ? ORDER BY step_order ASC LIMIT 1')
-      .get(workflowId, WorkflowStepStatus.PENDING) as WorkflowStep | undefined;
+    const nextStepSnapshot = await firestoreDb.collection('workflows').doc(workflowId).collection('steps')
+      .where('status', '==', WorkflowStepStatus.PENDING)
+      .orderBy('stepOrder', 'asc')
+      .limit(1)
+      .get();
 
-    if (nextStep) {
+    if (!nextStepSnapshot.empty) {
+      const nextStep = nextStepSnapshot.docs[0].data();
       await this.executeStep(nextStep.id);
       
-      // After executing, if the step became PENDING_FRONTEND, we should stop processing further steps for now
-      const currentStepStatus = db.prepare('SELECT status FROM workflow_steps WHERE id = ?').get(nextStep.id) as { status: string };
-      if (currentStepStatus && currentStepStatus.status === WorkflowStepStatus.PENDING_FRONTEND) {
+      const currentStepDoc = await firestoreDb.collection('workflows').doc(workflowId).collection('steps').doc(nextStepSnapshot.docs[0].id).get();
+      const currentStepStatus = currentStepDoc.data()?.status;
+      
+      if (currentStepStatus === WorkflowStepStatus.PENDING_FRONTEND) {
         return false;
       }
-      
-      return true; // More steps might exist and can be processed
-    } else {
-      // Check if any steps failed
-      const failedSteps = db.prepare('SELECT count(*) as count FROM workflow_steps WHERE workflow_id = ? AND status = ?')
-        .get(workflowId, WorkflowStepStatus.FAILED) as { count: number };
-        
-      if (failedSteps.count === 0) {
-        db.prepare('UPDATE workflows SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(WorkflowStatus.COMPLETED, workflowId);
-        // console.log(`[WorkflowEngine] Workflow ${workflowId} completed successfully.`);
-      }
-      return false; // No more pending steps
+      return true;
     }
+
+    const failedStepsSnapshot = await firestoreDb.collection('workflows').doc(workflowId).collection('steps')
+      .where('status', '==', WorkflowStepStatus.FAILED)
+      .get();
+
+    if (failedStepsSnapshot.empty) {
+      await firestoreDb.collection('workflows').doc(workflowId).update({
+        status: WorkflowStatus.COMPLETED,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+    }
+
+    return false;
   }
 }
 

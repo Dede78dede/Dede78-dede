@@ -1,4 +1,4 @@
-import { AgentStatus, JobStatus } from '../types/enums';
+import { AgentStatus, JobStatus } from '../core/enums';
 import { authenticatedFetch } from '../utils/api';
 
 export interface Agent {

@@ -9,7 +9,7 @@ import { useProjectsLogic } from '../features/projects/hooks/useProjectsLogic';
  * Allows users to create training, merge, and evaluation requests directly
  * as markdown files in their vault.
  */
-export function Projects() {
+export const Projects = React.memo(function Projects() {
   const {
     isModalOpen,
     setIsModalOpen,
@@ -189,7 +189,7 @@ export function Projects() {
       )}
     </div>
   );
-}
+});
 
 interface ActionBtnProps {
   icon: LucideIcon;

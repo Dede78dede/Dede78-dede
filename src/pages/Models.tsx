@@ -2,7 +2,7 @@ import React from 'react';
 import { Download, CheckCircle2, AlertCircle, HardDrive, Trash2, Play, Loader2 } from 'lucide-react';
 import { useModelsLogic, AVAILABLE_MODELS } from '../features/models/hooks/useModelsLogic';
 
-export function Models() {
+export const Models = React.memo(function Models() {
   const {
     settings,
     downloadProgress,
@@ -148,4 +148,4 @@ export function Models() {
       </div>
     </div>
   );
-}
+});

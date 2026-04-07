@@ -1,5 +1,5 @@
 
-import { ModelProvider } from '../types/enums';
+import { ModelProvider } from '../core/enums';
 
 export interface ModelConfig {
   provider: 'gemini' | 'openai' | 'anthropic' | 'groq' | 'deepseek' | string;
@@ -122,7 +122,7 @@ export class DeepSeekStrategy extends OpenAIStrategy {
 export class StrategyFactory {
   static getStrategy(provider: string): IModelStrategy {
     switch (provider) {
-      case ModelProvider.GEMINI: return new GeminiStrategy();
+      case ModelProvider.GOOGLE: return new GeminiStrategy();
       case ModelProvider.OPENAI: return new OpenAIStrategy();
       case ModelProvider.ANTHROPIC: return new AnthropicStrategy();
       case ModelProvider.GROQ: return new GroqStrategy();

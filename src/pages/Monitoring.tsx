@@ -1,3 +1,4 @@
+import React from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { AuditTrailStep } from '../services/MetricsService';
 import { Activity, CheckCircle2, AlertCircle, Info, Clock } from 'lucide-react';
@@ -9,7 +10,7 @@ import { useMonitoringLogic } from '../features/monitoring/hooks/useMonitoringLo
  * latency comparisons (Local vs Cloud), semantic cache performance,
  * and estimated token savings.
  */
-export function Monitoring() {
+export const Monitoring = React.memo(function Monitoring() {
   const {
     latencyData,
     cacheData,
@@ -140,4 +141,4 @@ export function Monitoring() {
       </div>
     </div>
   );
-}
+});

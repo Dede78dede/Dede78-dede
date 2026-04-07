@@ -1,7 +1,7 @@
 import React from 'react';
 import { AdvancedChat } from '../components/chat/AdvancedChat';
 
-export function SmarterRouterPage() {
+export const SmarterRouterPage = React.memo(function SmarterRouterPage() {
   return (
     <div className="flex flex-col h-full w-full bg-zinc-950 p-4 md:p-8">
       <div className="mb-6">
@@ -16,4 +16,4 @@ export function SmarterRouterPage() {
       </div>
     </div>
   );
-}
+});

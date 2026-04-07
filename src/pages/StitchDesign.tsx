@@ -1,7 +1,7 @@
 import { Paintbrush, Code, Figma, Loader2, Play, RefreshCw, Layers } from 'lucide-react';
 import { useStitchDesignLogic } from '../features/stitch/hooks/useStitchDesignLogic';
 
-export function StitchDesign() {
+export const StitchDesign = React.memo(function StitchDesign() {
   const {
     user,
     login,
@@ -197,4 +197,4 @@ export function StitchDesign() {
       )}
     </div>
   );
-}
+});

@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import db from "../db/database";
-import { JobStatus } from "../types/enums";
+import { JobStatus } from "../core/enums";
 
 export interface A2AMessage {
   messageId: string;

@@ -1,8 +1,9 @@
+import React from 'react';
 import { Bot, Shield, GitMerge, AlertTriangle, CheckCircle, Loader2, Code2 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { useAgentsLogic } from '../features/agents/hooks/useAgentsLogic';
 
-export function Agents() {
+export const Agents = React.memo(function Agents() {
   const {
     activeTab,
     setActiveTab,
@@ -485,4 +486,4 @@ export function Agents() {
       )}
     </div>
   );
-}
+});

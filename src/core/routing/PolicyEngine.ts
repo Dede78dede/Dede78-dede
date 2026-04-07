@@ -33,7 +33,8 @@ export class PolicyEngine {
       id: 'PREVENT_LOCAL_OOM',
       description: 'Impedisce l\'uso di modelli locali per prompt eccessivamente lunghi',
       evaluate: (context) => {
-        return context.selectedBackend?.type !== BackendType.CLOUD && context.prompt.length > 50000;
+        const isLocal = context.selectedBackendType === 'local' || context.selectedBackend?.type !== BackendType.CLOUD;
+        return isLocal && context.prompt.length > 50000;
       },
       action: (context) => {
         if (!context.metadata.securityFlags) context.metadata.securityFlags = [];

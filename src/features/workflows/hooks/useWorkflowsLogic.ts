@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { authenticatedFetch } from '../../../utils/api';
-import { WorkflowStatus, WorkflowStepStatus } from '../../../types/enums';
+import { WorkflowStatus, WorkflowStepStatus } from '../../../core/enums';
 
 export interface Workflow {
   id: string;
@@ -44,21 +44,7 @@ export function useWorkflowsLogic() {
     inputTemplate: 'Translate to Italian: {{input}}'
   }]);
 
-  useEffect(() => {
-    fetchWorkflows();
-    const interval = setInterval(fetchWorkflows, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    if (selectedWorkflow) {
-      fetchWorkflowSteps(selectedWorkflow.id);
-      const interval = setInterval(() => fetchWorkflowSteps(selectedWorkflow.id), 3000);
-      return () => clearInterval(interval);
-    }
-  }, [selectedWorkflow]);
-
-  const fetchWorkflows = async () => {
+  const fetchWorkflows = useCallback(async () => {
     try {
       const res = await authenticatedFetch('/api/workflows');
       const data = await res.json();
@@ -70,9 +56,9 @@ export function useWorkflowsLogic() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const fetchWorkflowSteps = async (id: string) => {
+  const fetchWorkflowSteps = useCallback(async (id: string) => {
     try {
       const res = await authenticatedFetch(`/api/workflows/${id}/steps`);
       const data = await res.json();
@@ -82,9 +68,23 @@ export function useWorkflowsLogic() {
     } catch (err) {
       console.error('Failed to fetch workflow steps', err);
     }
-  };
+  }, []);
 
-  const handleCreateWorkflow = async () => {
+  useEffect(() => {
+    fetchWorkflows();
+    const interval = setInterval(fetchWorkflows, 5000);
+    return () => clearInterval(interval);
+  }, [fetchWorkflows]);
+
+  useEffect(() => {
+    if (selectedWorkflow) {
+      fetchWorkflowSteps(selectedWorkflow.id);
+      const interval = setInterval(() => fetchWorkflowSteps(selectedWorkflow.id), 3000);
+      return () => clearInterval(interval);
+    }
+  }, [selectedWorkflow, fetchWorkflowSteps]);
+
+  const handleCreateWorkflow = useCallback(async () => {
     try {
       let parsedContext = {};
       try {
@@ -136,30 +136,32 @@ export function useWorkflowsLogic() {
       console.error('Error creating workflow', err);
       alert('Error creating workflow');
     }
-  };
+  }, [newGlobalContext, newWorkflowName, newSteps, fetchWorkflows]);
 
-  const addStep = () => {
-    setNewSteps([...newSteps, {
-      name: `step${newSteps.length + 1}`,
+  const addStep = useCallback(() => {
+    setNewSteps(prev => [...prev, {
+      name: `step${prev.length + 1}`,
       provider: 'gemini',
       model: 'gemini-2.5-flash',
       systemPrompt: '',
       temperature: 0.7,
       inputTemplate: ''
     }]);
-  };
+  }, []);
 
-  const removeStep = (index: number) => {
-    setNewSteps(newSteps.filter((_, i) => i !== index));
-  };
+  const removeStep = useCallback((index: number) => {
+    setNewSteps(prev => prev.filter((_, i) => i !== index));
+  }, []);
 
-  const updateStep = (index: number, field: string, value: any) => {
-    const updated = [...newSteps];
-    updated[index] = { ...updated[index], [field]: value };
-    setNewSteps(updated);
-  };
+  const updateStep = useCallback((index: number, field: string, value: any) => {
+    setNewSteps(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  }, []);
 
-  const handleBootstrapAgents = async () => {
+  const handleBootstrapAgents = useCallback(async () => {
     try {
       setIsLoading(true);
       // Create Jules Agent Workflow
@@ -234,7 +236,7 @@ export function useWorkflowsLogic() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [fetchWorkflows]);
 
   return {
     workflows,

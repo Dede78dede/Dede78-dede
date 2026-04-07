@@ -1,4 +1,5 @@
 import { authenticatedFetch } from '../utils/api';
+import { ModelProvider } from '../core/enums';
 
 /**
  * Helper function to handle Server-Sent Events (SSE) streaming from OpenAI-compatible APIs.
@@ -104,7 +105,7 @@ export async function generateWithOpenAI(prompt: string | any[], apiKey: string,
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      provider: "openai",
+      provider: ModelProvider.OPENAI,
       prompt,
       apiKey,
       stream: !!onChunk,
@@ -134,7 +135,7 @@ export async function generateWithAnthropic(prompt: string | any[], apiKey: stri
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      provider: "anthropic",
+      provider: ModelProvider.ANTHROPIC,
       prompt,
       apiKey,
       stream: !!onChunk,
@@ -164,7 +165,7 @@ export async function generateWithGroq(prompt: string | any[], apiKey: string, o
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      provider: "groq",
+      provider: ModelProvider.GROQ,
       prompt,
       apiKey,
       stream: !!onChunk,
@@ -194,7 +195,7 @@ export async function generateWithDeepSeek(prompt: string | any[], apiKey: strin
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      provider: "deepseek",
+      provider: ModelProvider.DEEPSEEK,
       prompt,
       apiKey,
       stream: !!onChunk,

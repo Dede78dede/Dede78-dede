@@ -13,7 +13,7 @@ ragRouter.post("/index", async (req, res) => {
     const safeVaultPath = getSafeVaultPath(vaultPath);
     if (!documentIndexer || documentIndexer.vaultPath !== safeVaultPath) {
       const { DocumentIndexer } = await import('../../services/RAG/DocumentIndexer');
-      const vectorStorePath = path.join(process.cwd(), '.rag_cache', 'vectors.json');
+      const vectorStorePath = process.env.NODE_ENV === 'production' ? path.join('/tmp', '.rag_cache', 'vectors.json') : path.join(process.cwd(), '.rag_cache', 'vectors.json');
       documentIndexer = new DocumentIndexer(safeVaultPath, vectorStorePath);
     }
 
@@ -29,6 +29,30 @@ ragRouter.post("/index", async (req, res) => {
   }
 });
 
+ragRouter.post("/index-web", async (req, res) => {
+  const { vaultPath, query } = req.body;
+  if (!vaultPath || !query) return res.status(400).json({ error: "Missing vaultPath or query" });
+
+  try {
+    const safeVaultPath = getSafeVaultPath(vaultPath);
+    if (!documentIndexer || documentIndexer.vaultPath !== safeVaultPath) {
+      const { DocumentIndexer } = await import('../../services/RAG/DocumentIndexer');
+      const vectorStorePath = process.env.NODE_ENV === 'production' ? path.join('/tmp', '.rag_cache', 'vectors.json') : path.join(process.cwd(), '.rag_cache', 'vectors.json');
+      documentIndexer = new DocumentIndexer(safeVaultPath, vectorStorePath);
+    }
+
+    if (documentIndexer.isIndexing) {
+      return res.status(409).json({ error: "Indexing already in progress" });
+    }
+
+    // Start web indexing asynchronously
+    documentIndexer.indexWebSearch(query).catch(console.error);
+    res.json({ message: "Web search indexing started" });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 ragRouter.post("/query", async (req, res) => {
   const { vaultPath, query, topK } = req.body;
   if (!vaultPath || !query) return res.status(400).json({ error: "Missing vaultPath or query" });
@@ -37,7 +61,7 @@ ragRouter.post("/query", async (req, res) => {
     const safeVaultPath = getSafeVaultPath(vaultPath);
     if (!documentIndexer || documentIndexer.vaultPath !== safeVaultPath) {
       const { DocumentIndexer } = await import('../../services/RAG/DocumentIndexer');
-      const vectorStorePath = path.join(process.cwd(), '.rag_cache', 'vectors.json');
+      const vectorStorePath = process.env.NODE_ENV === 'production' ? path.join('/tmp', '.rag_cache', 'vectors.json') : path.join(process.cwd(), '.rag_cache', 'vectors.json');
       documentIndexer = new DocumentIndexer(safeVaultPath, vectorStorePath);
     }
 

@@ -13,7 +13,7 @@ import { useSettingsLogic, WEBLLM_MODELS } from '../features/settings/hooks/useS
  * Allows users to configure application settings, including API keys,
  * default models, Ollama integration, and caching preferences.
  */
-export function Settings() {
+export const Settings = React.memo(function Settings() {
   const {
     localSettings,
     isSaved,
@@ -802,4 +802,4 @@ export function Settings() {
       </div>
     </div>
   );
-}
+});

@@ -1,6 +1,7 @@
+import React, { useMemo } from 'react';
 import { Activity, Cpu, HardDrive, Network, CheckCircle2, Clock, AlertCircle, LucideIcon, Download, Plus, GitMerge, DownloadCloud } from 'lucide-react';
 import { cn } from '../utils/cn';
-import { AgentStatus, JobStatus, WorkflowStatus } from '../types/enums';
+import { AgentStatus, JobStatus, WorkflowStatus } from '../core/enums';
 import { useDashboardLogic } from '../features/dashboard/hooks/useDashboardLogic';
 
 /**
@@ -8,7 +9,7 @@ import { useDashboardLogic } from '../features/dashboard/hooks/useDashboardLogic
  * Displays an overview of system resources, active agents, and pending jobs.
  * Provides actions to download the manifesto and create test jobs.
  */
-export function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void }) {
+export const Dashboard = React.memo(function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void }) {
   const {
     agents,
     jobs,
@@ -18,6 +19,12 @@ export function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void 
     handleDownloadManifesto,
     handleCreateTestJob
   } = useDashboardLogic();
+
+  const pendingJobsCount = useMemo(() => jobs.filter(j => j.status === JobStatus.PENDING).length.toString(), [jobs]);
+  const runningJobsCount = useMemo(() => jobs.filter(j => j.status === JobStatus.RUNNING).length.toString(), [jobs]);
+  
+  const completedWorkflowsCount = useMemo(() => jobs.filter(j => j.task_type === 'WORKFLOW' && j.status === JobStatus.COMPLETED).length.toString(), [jobs]);
+  const runningWorkflowsCount = useMemo(() => jobs.filter(j => j.task_type === 'WORKFLOW' && j.status === JobStatus.RUNNING).length.toString(), [jobs]);
 
   return (
     <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
@@ -63,8 +70,8 @@ export function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void 
         <StatCard icon={Cpu} label="CPU Usage" value="42%" trend="+5%" />
         <StatCard icon={HardDrive} label="VRAM (RTX 4090)" value="18.4 / 24 GB" trend="76%" />
         <StatCard icon={Network} label="SmarterRouter" value="Online" subtext={`${agents.length} agenti attivi`} />
-        <StatCard icon={Activity} label="Job in Coda" value={jobs.filter(j => j.status === JobStatus.PENDING).length.toString()} subtext={`${jobs.filter(j => j.status === JobStatus.RUNNING).length} in esecuzione`} />
-        <StatCard icon={GitMerge} label="Workflows" value={jobs.filter(j => j.task_type === 'WORKFLOW' && j.status === JobStatus.COMPLETED).length.toString()} subtext={`${jobs.filter(j => j.task_type === 'WORKFLOW' && j.status === JobStatus.RUNNING).length} attivi`} />
+        <StatCard icon={Activity} label="Job in Coda" value={pendingJobsCount} subtext={`${runningJobsCount} in esecuzione`} />
+        <StatCard icon={GitMerge} label="Workflows" value={completedWorkflowsCount} subtext={`${runningWorkflowsCount} attivi`} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -225,7 +232,7 @@ export function Dashboard({ onNavigate }: { onNavigate?: (view: string) => void 
       </div>
     </div>
   );
-}
+});
 
 interface StatCardProps {
   icon: LucideIcon;
@@ -235,7 +242,7 @@ interface StatCardProps {
   subtext?: string;
 }
 
-function StatCard({ icon: Icon, label, value, trend, subtext }: StatCardProps) {
+const StatCard = React.memo(function StatCard({ icon: Icon, label, value, trend, subtext }: StatCardProps) {
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5">
       <div className="flex items-center gap-3 text-zinc-400 mb-3">
@@ -249,4 +256,4 @@ function StatCard({ icon: Icon, label, value, trend, subtext }: StatCardProps) {
       </div>
     </div>
   );
-}
+});

@@ -93,12 +93,12 @@ export function useInferenceLogic() {
     setShowMacros(input.startsWith('/') && filteredMacros.length > 0);
   }, [input, filteredMacros.length]);
 
-  const handleMacroSelect = (macroPrompt: string) => {
+  const handleMacroSelect = useCallback((macroPrompt: string) => {
     setInput(macroPrompt);
     setShowMacros(false);
-  };
+  }, []);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
 
@@ -123,13 +123,13 @@ export function useInferenceLogic() {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  };
+  }, []);
 
-  const removeAttachment = (index: number) => {
+  const removeAttachment = useCallback((index: number) => {
     setAttachments(prev => prev.filter((_, i) => i !== index));
-  };
+  }, []);
 
-  const handleVerify = async (messageIndex: number) => {
+  const handleVerify = useCallback(async (messageIndex: number) => {
     if (isProcessing) return;
     
     const messageToVerify = messages[messageIndex];
@@ -190,9 +190,9 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, [isProcessing, messages, currentChatId, updateChat]);
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     if ((!input.trim() && attachments.length === 0) || isProcessing) return;
     
     let activeChatId = currentChatId;
@@ -467,10 +467,18 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
             } else if (result.action === 'WEB_SEARCH') {
               if (onChunkCb) onChunkCb(`🌍 *Master: ${result.message}*\n\n`);
               const masterStartSearch = Date.now();
+              
+              // Avvia l'indicizzazione della ricerca web in background
+              authenticatedFetch('/api/rag/index-web', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ vaultPath: settings.obsidianPath, query: prompt })
+              }).catch(err => console.error("Errore durante l'indicizzazione della ricerca web:", err));
+
               const response = await generateWithGemini(newMessages, onChunkCb, "gemini-3.1-pro-preview", systemPrompt, true);
               auditSteps.push({
                 component: `MasterOrchestrator (Web Search)`,
-                action: 'Generazione con Grounding',
+                action: 'Generazione con Grounding e Indicizzazione',
                 durationMs: Date.now() - masterStartSearch,
                 status: 'success'
               });
@@ -806,7 +814,11 @@ Mostra il tuo ragionamento tra i tag <think> e </think>.`;
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, [
+    input, attachments, isProcessing, currentChatId, createNewChat, messages, updateChat,
+    selectedModel, settings, ollamaReachable, generateLocal, isWebLlmReady, loadWebLlmModel,
+    generateWebLlm, useWebSearch
+  ]);
 
   return {
     settings,

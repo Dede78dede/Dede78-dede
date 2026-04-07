@@ -49,14 +49,14 @@ export enum DeviceType {
 }
 
 export enum ModelProvider {
-  GOOGLE = 'Google',
-  OPENAI = 'OpenAI',
-  ANTHROPIC = 'Anthropic',
-  GROQ = 'Groq',
-  DEEPSEEK = 'DeepSeek',
-  OLLAMA = 'Ollama',
-  TRANSFORMERS_JS = 'Transformers.js',
-  WEB_LLM = 'WebLLM',
+  GOOGLE = 'google',
+  OPENAI = 'openai',
+  ANTHROPIC = 'anthropic',
+  GROQ = 'groq',
+  DEEPSEEK = 'deepseek',
+  OLLAMA = 'ollama',
+  TRANSFORMERS_JS = 'transformers.js',
+  WEB_LLM = 'webllm',
 }
 
 export enum KnownModelId {
@@ -71,4 +71,42 @@ export enum KnownModelId {
   TINY_LLAMA_1_1B = 'Xenova/TinyLlama-1.1B-Chat-v1.0',
   LA_MINI_FLAN_T5 = 'Xenova/LaMini-Flan-T5-783M',
   BITNET_B1 = 'bitnet-b1',
+}
+
+export enum JobStatus {
+  PENDING = 'PENDING',
+  RUNNING = 'RUNNING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  PENDING_FRONTEND = 'PENDING_FRONTEND',
+  WAITING_FRONTEND = 'WAITING_FRONTEND'
+}
+
+export enum AgentStatus {
+  IDLE = 'IDLE',
+  BUSY = 'BUSY',
+  OFFLINE = 'OFFLINE'
+}
+
+export enum WorkflowStatus {
+  PENDING = 'PENDING',
+  RUNNING = 'RUNNING',
+  PAUSED = 'PAUSED',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED'
+}
+
+export enum WorkflowStepStatus {
+  PENDING = 'PENDING',
+  RUNNING = 'RUNNING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  PENDING_FRONTEND = 'PENDING_FRONTEND'
+}
+
+export enum MetricType {
+  LATENCY = 'latency',
+  CACHE = 'cache',
+  TOKEN = 'token',
+  AUDIT = 'audit'
 }

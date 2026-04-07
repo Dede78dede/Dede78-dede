@@ -1,3 +1,4 @@
+import React from 'react';
 import { Cpu } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { useSidebarLogic } from '../features/sidebar/hooks/useSidebarLogic';
@@ -11,7 +12,7 @@ interface SidebarProps {
  * Sidebar navigation component.
  * Renders the main navigation menu and handles view switching.
  */
-export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
+export const Sidebar = React.memo(function Sidebar({ currentView, setCurrentView }: SidebarProps) {
   const { navItems, handleNavClick, SettingsIcon } = useSidebarLogic(currentView, setCurrentView);
 
   return (
@@ -64,4 +65,4 @@ export function Sidebar({ currentView, setCurrentView }: SidebarProps) {
       </div>
     </aside>
   );
-}
+});

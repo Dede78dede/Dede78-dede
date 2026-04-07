@@ -14,7 +14,7 @@ export * from './abc/constants';
 
 // Types
 export * from './hal/types';
-export * from './mcp/types';
+export * from './mcp';
 export * from './routing/types';
 
 // Registries (Maps)

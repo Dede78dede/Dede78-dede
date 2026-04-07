@@ -19,7 +19,7 @@ if (!admin.apps.length) {
 
 // getSafeVaultPath moved to src/server/utils/pathUtils.ts
 
-import { JobStatus, WorkflowStatus, WorkflowStepStatus } from './src/types/enums';
+import { JobStatus, WorkflowStatus, WorkflowStepStatus, ModelProvider } from './src/core/enums';
 import { ragRouter } from './src/server/routes/rag';
 import { obsidianRouter } from './src/server/routes/obsidian';
 import { cacheRouter } from './src/server/routes/cache';
@@ -65,6 +65,7 @@ async function startServer() {
 
   // JWT Authentication Middleware
   const authenticateJWT = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.log(`[Auth] Request to ${req.url}`);
     const authHeader = req.headers.authorization;
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const idToken = authHeader.split('Bearer ')[1];
@@ -144,10 +145,10 @@ async function startServer() {
         
         // Map provider to API Key env var
         const envKeyMap: Record<string, string> = {
-          'openai': 'OPENAI_API_KEY',
-          'anthropic': 'ANTHROPIC_API_KEY',
-          'groq': 'GROQ_API_KEY',
-          'deepseek': 'DEEPSEEK_API_KEY'
+          [ModelProvider.OPENAI]: 'OPENAI_API_KEY',
+          [ModelProvider.ANTHROPIC]: 'ANTHROPIC_API_KEY',
+          [ModelProvider.GROQ]: 'GROQ_API_KEY',
+          [ModelProvider.DEEPSEEK]: 'DEEPSEEK_API_KEY'
         };
         
         const apiKey = process.env[envKeyMap[selectedModel.provider]];
@@ -199,41 +200,60 @@ async function startServer() {
   app.use("/api/cache", cacheRouter);
 
   // --- WORKFLOW API ---
-  app.post("/api/workflows/create", (req, res) => {
+  app.post("/api/workflows/create", async (req, res) => {
     const { name, global_context, steps } = req.body;
     if (!name || !steps || !Array.isArray(steps)) {
       return res.status(400).json({ error: "Missing name or steps array" });
     }
 
     try {
+      const userId = (req as any).user?.uid || 'anonymous';
       const workflowId = `wf_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      db.transaction(() => {
-        // Create workflow
-        db.prepare('INSERT INTO workflows (id, name, status, global_context) VALUES (?, ?, ?, ?)')
-          .run(workflowId, name, WorkflowStatus.PENDING, JSON.stringify(global_context || {}));
+      const batch = firestoreDb.batch();
+      
+      const workflowRef = firestoreDb.collection('workflows').doc(workflowId);
+      batch.set(workflowRef, {
+        id: workflowId,
+        userId,
+        name,
+        status: WorkflowStatus.PENDING,
+        globalContext: JSON.stringify(global_context || {}),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
 
-        // Create steps
-        const insertStep = db.prepare('INSERT INTO workflow_steps (id, workflow_id, step_order, name, model_config, input_prompt_template, status) VALUES (?, ?, ?, ?, ?, ?, ?)');
-        
-        steps.forEach((step: any, index: number) => {
-          const stepId = `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-          insertStep.run(
-            stepId,
-            workflowId,
-            index + 1,
-            step.name,
-            JSON.stringify(step.model_config),
-            step.input_prompt_template,
-            WorkflowStepStatus.PENDING
-          );
+      steps.forEach((step: any, index: number) => {
+        const stepId = `step_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const stepRef = workflowRef.collection('steps').doc(stepId);
+        batch.set(stepRef, {
+          id: stepId,
+          workflowId,
+          stepOrder: index + 1,
+          name: step.name,
+          modelConfig: JSON.stringify(step.model_config),
+          inputPromptTemplate: step.input_prompt_template,
+          status: WorkflowStepStatus.PENDING,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
         });
+      });
 
-        // Create a job to start the workflow
-        const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        db.prepare('INSERT INTO jobs (id, task_type, status, progress, logs, payload) VALUES (?, ?, ?, ?, ?, ?)')
-          .run(jobId, 'WORKFLOW', JobStatus.PENDING, 0, 'Workflow queued', JSON.stringify({ workflow_id: workflowId }));
-      })();
+      const jobId = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const jobRef = firestoreDb.collection('jobs').doc(jobId);
+      batch.set(jobRef, {
+        id: jobId,
+        userId,
+        taskType: 'WORKFLOW',
+        status: JobStatus.PENDING,
+        progress: 0,
+        logs: 'Workflow queued',
+        payload: JSON.stringify({ workflow_id: workflowId }),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+
+      await batch.commit();
 
       res.json({ success: true, workflowId });
     } catch (error: any) {
@@ -241,25 +261,53 @@ async function startServer() {
     }
   });
 
-  app.get("/api/workflows", (req, res) => {
+  app.get("/api/workflows", async (req, res) => {
     try {
-      const workflows = db.prepare(`
-        SELECT w.*, 
-               (SELECT COUNT(*) FROM workflow_steps WHERE workflow_id = w.id) as total_steps,
-               (SELECT COUNT(*) FROM workflow_steps WHERE workflow_id = w.id AND status = '${WorkflowStepStatus.COMPLETED}') as completed_steps
-        FROM workflows w 
-        ORDER BY w.created_at DESC 
-        LIMIT 50
-      `).all();
+      const userId = (req as any).user?.uid;
+      let query: admin.firestore.Query = firestoreDb.collection('workflows');
+      if (userId) {
+        query = query.where('userId', '==', userId);
+      }
+      const snapshot = await query.orderBy('createdAt', 'desc').limit(50).get();
+      
+      const workflows = await Promise.all(snapshot.docs.map(async doc => {
+        const data = doc.data();
+        const stepsSnapshot = await doc.ref.collection('steps').get();
+        const total_steps = stepsSnapshot.size;
+        const completed_steps = stepsSnapshot.docs.filter(s => s.data().status === WorkflowStepStatus.COMPLETED).length;
+        return {
+          ...data,
+          created_at: data.createdAt?.toDate()?.toISOString(),
+          updated_at: data.updatedAt?.toDate()?.toISOString(),
+          global_context: data.globalContext,
+          total_steps,
+          completed_steps
+        };
+      }));
+      
       res.json({ workflows });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
-  app.get("/api/workflows/:id/steps", (req, res) => {
+  app.get("/api/workflows/:id/steps", async (req, res) => {
     try {
-      const steps = db.prepare('SELECT * FROM workflow_steps WHERE workflow_id = ? ORDER BY step_order ASC').all(req.params.id);
+      const snapshot = await firestoreDb.collection('workflows').doc(req.params.id).collection('steps').orderBy('stepOrder', 'asc').get();
+      const steps = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          created_at: data.createdAt?.toDate()?.toISOString(),
+          updated_at: data.updatedAt?.toDate()?.toISOString(),
+          workflow_id: data.workflowId,
+          step_order: data.stepOrder,
+          model_config: data.modelConfig,
+          input_prompt_template: data.inputPromptTemplate,
+          output_result: data.outputResult,
+          retry_count: data.retryCount
+        };
+      });
       res.json({ steps });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -341,35 +389,62 @@ async function startServer() {
 
   // --- AGENT MANAGER & JOB QUEUE (L3) ---
   // --- FRONTEND WORKER API ---
-  app.get("/api/worker/jobs", (req, res) => {
+  app.get("/api/worker/jobs", async (req, res) => {
     try {
-      const stmt = db.prepare(`SELECT * FROM jobs WHERE status = '${JobStatus.PENDING_FRONTEND}' ORDER BY created_at ASC LIMIT 1`);
-      const job = stmt.get();
-      res.json({ job: job || null });
+      const snapshot = await firestoreDb.collection('jobs')
+        .where('status', '==', JobStatus.PENDING_FRONTEND)
+        .orderBy('createdAt', 'asc')
+        .limit(1)
+        .get();
+      
+      if (!snapshot.empty) {
+        const doc = snapshot.docs[0];
+        res.json({ job: { id: doc.id, ...doc.data() } });
+      } else {
+        res.json({ job: null });
+      }
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
-  app.post("/api/worker/jobs/:id/complete", (req, res) => {
+  app.post("/api/worker/jobs/:id/complete", async (req, res) => {
     const { id } = req.params;
     const { status, result, logs } = req.body;
     try {
-      const stmt = db.prepare("UPDATE jobs SET status = ?, progress = ?, logs = logs || ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?");
-      stmt.run(status, status === JobStatus.COMPLETED ? 100 : 0, `\n[Frontend Worker] ${logs}\nResult: ${result}`, id);
+      const docRef = firestoreDb.collection('jobs').doc(id);
+      const doc = await docRef.get();
+      if (!doc.exists) return res.status(404).json({ error: "Job not found" });
+      
+      const currentLogs = doc.data()?.logs || '';
+      await docRef.update({
+        status,
+        progress: status === JobStatus.COMPLETED ? 100 : 0,
+        logs: currentLogs + `\n[Frontend Worker] ${logs}\nResult: ${result}`,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
-  app.get("/api/worker/workflow-steps", (req, res) => {
+  app.get("/api/worker/workflow-steps", async (req, res) => {
     try {
-      const stmt = db.prepare(`SELECT * FROM workflow_steps WHERE status = '${WorkflowStepStatus.PENDING_FRONTEND}' ORDER BY step_order ASC LIMIT 1`);
-      const step = stmt.get();
-      if (step) {
-        const workflow = db.prepare("SELECT global_context FROM workflows WHERE id = ?").get((step as any).workflow_id);
-        res.json({ step, context: workflow ? (workflow as any).global_context : '{}' });
+      const snapshot = await firestoreDb.collectionGroup('steps')
+        .where('status', '==', WorkflowStepStatus.PENDING_FRONTEND)
+        .orderBy('stepOrder', 'asc')
+        .limit(1)
+        .get();
+      
+      if (!snapshot.empty) {
+        const stepDoc = snapshot.docs[0];
+        const stepData = stepDoc.data();
+        const workflowDoc = await firestoreDb.collection('workflows').doc(stepData.workflowId).get();
+        res.json({ 
+          step: { id: stepDoc.id, ...stepData }, 
+          context: workflowDoc.exists ? workflowDoc.data()?.globalContext : '{}' 
+        });
       } else {
         res.json({ step: null });
       }
@@ -378,23 +453,63 @@ async function startServer() {
     }
   });
 
-  app.post("/api/worker/workflow-steps/:id/complete", (req, res) => {
+  app.post("/api/worker/workflow-steps/:id/complete", async (req, res) => {
     const { id } = req.params;
     const { status, result, context } = req.body;
     try {
-      const step = db.prepare("SELECT workflow_id FROM workflow_steps WHERE id = ?").get(id) as any;
-      if (!step) return res.status(404).json({ error: "Step not found" });
+      const stepSnapshot = await firestoreDb.collectionGroup('steps').where('id', '==', id).limit(1).get();
+      if (stepSnapshot.empty) return res.status(404).json({ error: "Step not found" });
+      
+      const stepDoc = stepSnapshot.docs[0];
+      const stepData = stepDoc.data();
+      const workflowId = stepData.workflowId;
 
-      db.prepare("UPDATE workflow_steps SET status = ?, output_result = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(status, result, id);
+      await stepDoc.ref.update({
+        status,
+        outputResult: result,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
       
       if (status === WorkflowStepStatus.COMPLETED && context) {
-        db.prepare("UPDATE workflows SET global_context = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(context, step.workflow_id);
+        await firestoreDb.collection('workflows').doc(workflowId).update({
+          globalContext: context,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        
         // Resume the workflow job
-        db.prepare(`UPDATE jobs SET status = '${JobStatus.PENDING}', updated_at = CURRENT_TIMESTAMP WHERE task_type = 'WORKFLOW' AND payload LIKE ?`).run(`%${step.workflow_id}%`);
+        const jobsSnapshot = await firestoreDb.collection('jobs')
+          .where('taskType', '==', 'WORKFLOW')
+          .get();
+        
+        for (const jobDoc of jobsSnapshot.docs) {
+          const payload = jobDoc.data().payload;
+          if (payload && payload.includes(workflowId)) {
+            await jobDoc.ref.update({
+              status: JobStatus.PENDING,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+          }
+        }
       } else if (status === WorkflowStepStatus.FAILED) {
-        db.prepare(`UPDATE workflows SET status = '${WorkflowStatus.FAILED}', updated_at = CURRENT_TIMESTAMP WHERE id = ?`).run(step.workflow_id);
+        await firestoreDb.collection('workflows').doc(workflowId).update({
+          status: WorkflowStatus.FAILED,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+        
         // Fail the workflow job
-        db.prepare(`UPDATE jobs SET status = '${JobStatus.FAILED}', updated_at = CURRENT_TIMESTAMP WHERE task_type = 'WORKFLOW' AND payload LIKE ?`).run(`%${step.workflow_id}%`);
+        const jobsSnapshot = await firestoreDb.collection('jobs')
+          .where('taskType', '==', 'WORKFLOW')
+          .get();
+          
+        for (const jobDoc of jobsSnapshot.docs) {
+          const payload = jobDoc.data().payload;
+          if (payload && payload.includes(workflowId)) {
+            await jobDoc.ref.update({
+              status: JobStatus.FAILED,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
+          }
+        }
       }
       
       res.json({ success: true });
@@ -402,46 +517,90 @@ async function startServer() {
       res.status(500).json({ error: error.message });
     }
   });
-  app.post("/api/jobs/create", (req, res) => {
+  app.post("/api/jobs/create", async (req, res) => {
     const { task_type, payload } = req.body;
     if (!task_type) return res.status(400).json({ error: "Missing task_type" });
 
     try {
+      const userId = (req as any).user?.uid || 'anonymous';
       const id = `job_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const stmt = db.prepare('INSERT INTO jobs (id, task_type, status, progress, logs, payload) VALUES (?, ?, ?, ?, ?, ?)');
       
-      stmt.run(id, task_type, JobStatus.PENDING, 0, 'Job queued', JSON.stringify(payload || {}));
+      await firestoreDb.collection('jobs').doc(id).set({
+        id,
+        userId,
+        taskType: task_type,
+        status: JobStatus.PENDING,
+        progress: 0,
+        logs: 'Job queued',
+        payload: JSON.stringify(payload || {}),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
+      
       res.json({ success: true, jobId: id });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
-  app.get("/api/jobs/:id", (req, res) => {
+  app.get("/api/jobs/:id", async (req, res) => {
     try {
-      const stmt = db.prepare('SELECT * FROM jobs WHERE id = ?');
-      const job = stmt.get(req.params.id);
-      if (!job) return res.status(404).json({ error: "Job not found" });
+      const doc = await firestoreDb.collection('jobs').doc(req.params.id).get();
+      if (!doc.exists) return res.status(404).json({ error: "Job not found" });
+      
+      const data = doc.data() as any;
+      const job = {
+        ...data,
+        task_type: data.taskType,
+        created_at: data.createdAt?.toDate()?.toISOString(),
+        updated_at: data.updatedAt?.toDate()?.toISOString()
+      };
       res.json({ job });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
-  app.get("/api/jobs", (req, res) => {
+  app.get("/api/jobs", async (req, res) => {
     try {
-      const stmt = db.prepare('SELECT * FROM jobs ORDER BY created_at DESC LIMIT 50');
-      const jobs = stmt.all();
+      const userId = (req as any).user?.uid;
+      let query: admin.firestore.Query = firestoreDb.collection('jobs');
+      if (userId) {
+        query = query.where('userId', '==', userId);
+      }
+      const snapshot = await query.orderBy('createdAt', 'desc').limit(50).get();
+      
+      const jobs = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          task_type: data.taskType,
+          created_at: data.createdAt?.toDate()?.toISOString(),
+          updated_at: data.updatedAt?.toDate()?.toISOString()
+        };
+      });
       res.json({ jobs });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });
 
-  app.get("/api/agents", (req, res) => {
+  app.get("/api/agents", async (req, res) => {
     try {
-      const stmt = db.prepare('SELECT * FROM agents');
-      const agents = stmt.all();
+      const userId = (req as any).user?.uid;
+      let query: admin.firestore.Query = firestoreDb.collection('agents');
+      if (userId) {
+        query = query.where('userId', '==', userId);
+      }
+      const snapshot = await query.get();
+      
+      const agents = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          ...data,
+          created_at: data.createdAt?.toDate()?.toISOString()
+        };
+      });
       res.json({ agents });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
@@ -467,7 +626,7 @@ async function startServer() {
       };
 
       if (systemPrompt) {
-        if (provider === "anthropic") {
+        if (provider === ModelProvider.ANTHROPIC) {
           body.system = systemPrompt;
         } else {
           body.messages.push({ role: "system", content: systemPrompt });
@@ -483,16 +642,16 @@ async function startServer() {
           
           // Handle attachments if present
           if (msg.attachments && msg.attachments.length > 0) {
-            if (provider === "openai" || provider === "anthropic") {
+            if (provider === ModelProvider.OPENAI || provider === ModelProvider.ANTHROPIC) {
               content = [{ type: "text", text: msg.content }];
               for (const att of msg.attachments) {
                 if (att.data && att.mimeType.startsWith('image/')) {
-                  if (provider === "openai") {
+                  if (provider === ModelProvider.OPENAI) {
                     content.push({
                       type: "image_url",
                       image_url: { url: `data:${att.mimeType};base64,${att.data}` }
                     });
-                  } else if (provider === "anthropic") {
+                  } else if (provider === ModelProvider.ANTHROPIC) {
                     content.push({
                       type: "image",
                       source: {
@@ -516,21 +675,21 @@ async function startServer() {
         body.messages.push({ role: "user", content: prompt });
       }
 
-      if (provider === "openai") {
+      if (provider === ModelProvider.OPENAI) {
         url = "https://api.openai.com/v1/chat/completions";
         headers["Authorization"] = `Bearer ${apiKey}`;
         body.model = "gpt-4o";
-      } else if (provider === "anthropic") {
+      } else if (provider === ModelProvider.ANTHROPIC) {
         url = "https://api.anthropic.com/v1/messages";
         headers["x-api-key"] = apiKey;
         headers["anthropic-version"] = "2023-06-01";
         body.model = "claude-3-5-sonnet-20240620";
         body.max_tokens = 1024;
-      } else if (provider === "groq") {
+      } else if (provider === ModelProvider.GROQ) {
         url = "https://api.groq.com/openai/v1/chat/completions";
         headers["Authorization"] = `Bearer ${apiKey}`;
         body.model = "llama3-70b-8192";
-      } else if (provider === "deepseek") {
+      } else if (provider === ModelProvider.DEEPSEEK) {
         url = "https://api.deepseek.com/chat/completions";
         headers["Authorization"] = `Bearer ${apiKey}`;
         body.model = "deepseek-chat";
