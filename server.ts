@@ -9,13 +9,6 @@ import { GoogleGenAI, Type } from "@google/genai";
 import admin from 'firebase-admin';
 import firebaseConfig from './firebase-applet-config.json';
 
-// Initialize Firebase Admin
-if (!admin.apps.length) {
-  admin.initializeApp({
-    projectId: firebaseConfig.projectId,
-  });
-}
-
 // getSafeVaultPath moved to src/server/utils/pathUtils.ts
 
 import { JobStatus, WorkflowStatus, WorkflowStepStatus, ModelProvider } from './src/core/enums';

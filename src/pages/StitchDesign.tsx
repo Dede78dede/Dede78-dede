@@ -1,3 +1,4 @@
+import React from 'react';
 import { Paintbrush, Code, Figma, Loader2, Play, RefreshCw, Layers } from 'lucide-react';
 import { useStitchDesignLogic } from '../features/stitch/hooks/useStitchDesignLogic';
 
