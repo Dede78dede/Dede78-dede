@@ -3,7 +3,6 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
 import { WebSocketServer } from "ws";
-import db from "./src/db/database"; // Initialize SQLite DB
 import { jobScheduler } from "./src/services/JobScheduler";
 import { workflowEngine } from "./src/services/WorkflowEngine";
 import { GoogleGenAI, Type } from "@google/genai";
@@ -20,6 +19,7 @@ if (!admin.apps.length) {
 // getSafeVaultPath moved to src/server/utils/pathUtils.ts
 
 import { JobStatus, WorkflowStatus, WorkflowStepStatus, ModelProvider } from './src/core/enums';
+import { firestoreDb } from './src/db/firestore';
 import { ragRouter } from './src/server/routes/rag';
 import { obsidianRouter } from './src/server/routes/obsidian';
 import { cacheRouter } from './src/server/routes/cache';
@@ -74,8 +74,9 @@ async function startServer() {
         const decodedToken = await getAuth().verifyIdToken(idToken);
         (req as any).user = decodedToken;
         next();
-      } catch (error) {
-        res.status(401).json({ error: 'Unauthorized: Invalid token' });
+      } catch (error: any) {
+        console.error('[Auth] Error verifying token:', error);
+        res.status(401).json({ error: 'Unauthorized: Invalid token', details: error.message });
       }
     } else {
       res.status(401).json({ error: 'Unauthorized: No token provided' });
@@ -375,8 +376,19 @@ async function startServer() {
       if (response.status === "SUCCESS" && response.suggestedActions?.includes("CREATE_TICKET")) {
         // Creazione di un Job per Jules/Antigravity
         const jobId = `job_ticket_${Date.now()}`;
-        db.prepare('INSERT INTO jobs (id, task_type, status, progress, logs, payload) VALUES (?, ?, ?, ?, ?, ?)')
-          .run(jobId, 'CODE_FIX', JobStatus.PENDING, 0, 'Ticket creato automaticamente da A2A', JSON.stringify({ issue: response.result }));
+        const userId = (req as any).user?.uid || 'anonymous';
+        
+        await firestoreDb.collection('jobs').doc(jobId).set({
+          id: jobId,
+          userId,
+          taskType: 'CODE_FIX',
+          status: JobStatus.PENDING,
+          progress: 0,
+          logs: 'Ticket creato automaticamente da A2A',
+          payload: JSON.stringify({ issue: response.result }),
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
         
         (response as any).ticketCreated = jobId;
       }

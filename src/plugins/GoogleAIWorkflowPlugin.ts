@@ -1,5 +1,6 @@
-import db from '../db/database';
 import { WorkflowStatus, WorkflowStepStatus } from '../core/enums';
+import { firestoreDb } from '../db/firestore';
+import admin from 'firebase-admin';
 
 /**
  * Plugin: Google AI Full-Stack Workflow
@@ -7,46 +8,89 @@ import { WorkflowStatus, WorkflowStepStatus } from '../core/enums';
  * le 4 fasi descritte nel documento "Sviluppo e Integrazione di un Sistema Multi-Agente".
  */
 export class GoogleAIWorkflowPlugin {
-  static install() {
+  static async install(userId: string = 'anonymous') {
     try {
       const workflowId = `wf_google_ai_${Date.now()}`;
       
-      db.transaction(() => {
-        // Crea il Workflow principale
-        db.prepare('INSERT OR REPLACE INTO workflows (id, name, status, global_context) VALUES (?, ?, ?, ?)')
-          .run(workflowId, 'Google AI Enterprise Platform Setup', WorkflowStatus.PENDING, JSON.stringify({
-            document_reference: 'data/google_ai_workflow.md',
-            target_architecture: 'Multi-Agent Customer Support'
-          }));
+      const batch = firestoreDb.batch();
+      
+      const workflowRef = firestoreDb.collection('workflows').doc(workflowId);
+      batch.set(workflowRef, {
+        id: workflowId,
+        userId,
+        name: 'Google AI Enterprise Platform Setup',
+        status: WorkflowStatus.PENDING,
+        globalContext: JSON.stringify({
+          document_reference: 'data/google_ai_workflow.md',
+          target_architecture: 'Multi-Agent Customer Support'
+        }),
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp()
+      });
 
-        // Fase 1: Setup Ambiente
-        db.prepare('INSERT OR REPLACE INTO workflow_steps (id, workflow_id, step_order, name, model_config, input_prompt_template, status) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .run(`step_1_${workflowId}`, workflowId, 1, 'Fase 1: Setup Ambiente (AI Studio & IDX)', JSON.stringify({ provider: 'google', model: 'gemini-3.1-pro-preview' }), 
-          'Analizza il documento e genera gli script Gemini CLI per il setup dei container su Project IDX.', WorkflowStepStatus.PENDING);
+      const steps = [
+        {
+          id: `step_1_${workflowId}`,
+          order: 1,
+          name: 'Fase 1: Setup Ambiente (AI Studio & IDX)',
+          prompt: 'Analizza il documento e genera gli script Gemini CLI per il setup dei container su Project IDX.'
+        },
+        {
+          id: `step_2_${workflowId}`,
+          order: 2,
+          name: 'Fase 2: Sviluppo Sicuro (Jules & Antigravity)',
+          prompt: 'Configura le regole di Antigravity per l\'analisi delle PR e i prompt di sistema per Jules.'
+        },
+        {
+          id: `step_3_${workflowId}`,
+          order: 3,
+          name: 'Fase 3: RAG e FileSearch API',
+          prompt: 'Progetta l\'integrazione della FileSearch API per l\'Agente Diagnostico (ADK) e l\'Agente Front-End (Vertex).'
+        },
+        {
+          id: `step_4_${workflowId}`,
+          order: 4,
+          name: 'Fase 4: Sinergia Multi-Agente (Google A2A)',
+          prompt: 'Definisci il protocollo di comunicazione A2A tra l\'Agente Principale e l\'Agente Diagnostico.'
+        }
+      ];
 
-        // Fase 2: Sviluppo e Sicurezza
-        db.prepare('INSERT OR REPLACE INTO workflow_steps (id, workflow_id, step_order, name, model_config, input_prompt_template, status) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .run(`step_2_${workflowId}`, workflowId, 2, 'Fase 2: Sviluppo Sicuro (Jules & Antigravity)', JSON.stringify({ provider: 'google', model: 'gemini-3.1-pro-preview' }), 
-          'Configura le regole di Antigravity per l\'analisi delle PR e i prompt di sistema per Jules.', WorkflowStepStatus.PENDING);
+      for (const step of steps) {
+        const stepRef = workflowRef.collection('steps').doc(step.id);
+        batch.set(stepRef, {
+          id: step.id,
+          workflowId,
+          stepOrder: step.order,
+          name: step.name,
+          modelConfig: JSON.stringify({ provider: 'google', model: 'gemini-3.1-pro-preview' }),
+          inputPromptTemplate: step.prompt,
+          status: WorkflowStepStatus.PENDING,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
 
-        // Fase 3: Architettura Agenti e RAG
-        db.prepare('INSERT OR REPLACE INTO workflow_steps (id, workflow_id, step_order, name, model_config, input_prompt_template, status) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .run(`step_3_${workflowId}`, workflowId, 3, 'Fase 3: RAG e FileSearch API', JSON.stringify({ provider: 'google', model: 'gemini-3.1-pro-preview' }), 
-          'Progetta l\'integrazione della FileSearch API per l\'Agente Diagnostico (ADK) e l\'Agente Front-End (Vertex).', WorkflowStepStatus.PENDING);
+      const julesRef = firestoreDb.collection('agents').doc('agent_jules');
+      batch.set(julesRef, {
+        id: 'agent_jules',
+        userId,
+        name: 'Jules (Global Code Vision)',
+        type: 'CODE_ANALYZER',
+        status: 'ONLINE',
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
 
-        // Fase 4: Sinergia Multi-Agente (Google A2A)
-        db.prepare('INSERT OR REPLACE INTO workflow_steps (id, workflow_id, step_order, name, model_config, input_prompt_template, status) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .run(`step_4_${workflowId}`, workflowId, 4, 'Fase 4: Sinergia Multi-Agente (Google A2A)', JSON.stringify({ provider: 'google', model: 'gemini-3.1-pro-preview' }), 
-          'Definisci il protocollo di comunicazione A2A tra l\'Agente Principale e l\'Agente Diagnostico.', WorkflowStepStatus.PENDING);
-          
-        // Registrazione Agenti (Jules e Antigravity)
-        db.prepare('INSERT OR IGNORE INTO agents (id, name, type, status) VALUES (?, ?, ?, ?)')
-          .run('agent_jules', 'Jules (Global Code Vision)', 'CODE_ANALYZER', 'ONLINE');
-          
-        db.prepare('INSERT OR IGNORE INTO agents (id, name, type, status) VALUES (?, ?, ?, ?)')
-          .run('agent_antigravity', 'Antigravity (Security Sentinel)', 'IDS_WAF', 'ONLINE');
+      const antigravityRef = firestoreDb.collection('agents').doc('agent_antigravity');
+      batch.set(antigravityRef, {
+        id: 'agent_antigravity',
+        userId,
+        name: 'Antigravity (Security Sentinel)',
+        type: 'IDS_WAF',
+        status: 'ONLINE',
+        createdAt: admin.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
 
-      })();
+      await batch.commit();
       
       console.log('[Plugin] Google AI Workflow installato con successo.');
       return workflowId;

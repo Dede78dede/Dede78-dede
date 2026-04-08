@@ -1,25 +1,39 @@
 import { Router } from 'express';
-import db from '../../db/database';
+import { firestoreDb } from '../../db/firestore';
+import admin from 'firebase-admin';
 
 export const cacheRouter = Router();
 
-cacheRouter.post("/set", (req, res) => {
+cacheRouter.post("/set", async (req, res) => {
   const { id, prompt, embedding, response } = req.body;
   if (!id || !prompt || !embedding || !response) return res.status(400).json({ error: "Missing parameters" });
 
   try {
-    const stmt = db.prepare('INSERT OR REPLACE INTO semantic_cache (id, prompt, embedding, response) VALUES (?, ?, ?, ?)');
-    stmt.run(id, prompt, JSON.stringify(embedding), response);
+    const userId = (req as any).user?.uid || 'anonymous';
+    await firestoreDb.collection('caches').doc(id).set({
+      id,
+      userId,
+      query: prompt,
+      response,
+      embedding: JSON.stringify(embedding),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      updatedAt: admin.firestore.FieldValue.serverTimestamp()
+    });
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-cacheRouter.get("/all", (req, res) => {
+cacheRouter.get("/all", async (req, res) => {
   try {
-    const stmt = db.prepare('SELECT * FROM semantic_cache');
-    const rows = stmt.all();
+    const userId = (req as any).user?.uid;
+    let query: admin.firestore.Query = firestoreDb.collection('caches');
+    if (userId) {
+      query = query.where('userId', '==', userId);
+    }
+    const snapshot = await query.get();
+    const rows = snapshot.docs.map(doc => doc.data());
     res.json({ cache: rows });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
